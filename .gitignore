@@ -1,0 +1,11 @@
+# Build outputs
+/dist/
+/locales/*.mo
+
+# Local tooling
+/vendor/
+/.phpunit.cache/
+/node_modules/
+.DS_Store
+*.swp
+.idea/

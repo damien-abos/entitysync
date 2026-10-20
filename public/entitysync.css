@@ -1,0 +1,80 @@
+/**
+ * Entity Sync plugin for GLPI
+ * @license GPL-3.0-or-later
+ */
+
+.entitysync-level .card-header {
+    background: var(--tblr-bg-surface-secondary, rgba(0, 0, 0, 0.02));
+}
+
+.entitysync-group {
+    border-left: 3px solid var(--tblr-primary, #206bc4);
+    padding: 0.5rem 0 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.entitysync-group-or {
+    border-left-color: var(--tblr-orange, #f76707);
+}
+
+.entitysync-group-not {
+    border-left-style: dashed;
+}
+
+.entitysync-group-children > .entitysync-group {
+    margin-left: 0.5rem;
+}
+
+.entitysync-condition {
+    padding: 0.25rem 0;
+}
+
+.entitysync-logic-separator {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--tblr-muted, #667382);
+    text-transform: uppercase;
+    margin: 0.1rem 0;
+}
+
+.entitysync-preview .entitysync-toolbar {
+    top: 0;
+    z-index: 5;
+}
+
+.entitysync-preview .entitysync-issues {
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.entitysync-preview .entitysync-path {
+    white-space: normal;
+    min-width: 16rem;
+}
+
+.entitysync-preview .entitysync-blocked {
+    opacity: 0.75;
+}
+
+.entitysync-preview .entitysync-pre {
+    white-space: pre-wrap;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--tblr-bg-surface-secondary, rgba(0, 0, 0, 0.03));
+    max-width: 28rem;
+}
+
+.entitysync-preview .entitysync-old {
+    color: var(--tblr-red, #d63939);
+}
+
+.entitysync-preview .entitysync-new {
+    color: var(--tblr-green, #2fb344);
+    text-decoration: none;
+}
+
+.entitysync-preview pre.entitysync-old,
+.entitysync-preview pre.entitysync-new {
+    text-decoration: none;
+}

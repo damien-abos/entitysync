@@ -1,0 +1,22 @@
+[
+    {
+        "label": "Organisation",
+        "key_columns": ["Organisation"],
+        "comment_columns": [{"column": "Responsable", "label": "Responsable"}]
+    },
+    {
+        "label": "Site",
+        "key_columns": ["Site"],
+        "name_rules": [{"pattern": "^SITE[-_ ]", "replacement": "", "flags": "i"}],
+        "empty_label": "Sans site"
+    },
+    {
+        "label": "Projet",
+        "key_columns": ["Code projet"],
+        "name_column": "Projet",
+        "comment_columns": [
+            {"column": "Code projet", "label": "Code"},
+            {"column": "Budget", "label": "Budget"}
+        ]
+    }
+]

@@ -1,0 +1,17 @@
+{
+    "type": "group",
+    "logic": "AND",
+    "negate": false,
+    "children": [
+        {"type": "condition", "column": "Statut", "operator": "not_in", "values": ["Fermé", "Annulé"]},
+        {
+            "type": "group",
+            "logic": "OR",
+            "negate": false,
+            "children": [
+                {"type": "condition", "column": "Budget", "operator": "gte", "values": ["1000"]},
+                {"type": "condition", "column": "Budget", "operator": "empty", "values": []}
+            ]
+        }
+    ]
+}

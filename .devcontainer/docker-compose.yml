@@ -1,0 +1,50 @@
+name: entitysync-dev
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: vscode
+    # Serves GLPI on port 8080 once post-create.sh has installed it.
+    command: ["bash", "/workspaces/entitysync/.devcontainer/serve.sh"]
+    volumes:
+      - ..:/workspaces/entitysync:cached
+      - glpi:/opt/glpi
+      - claude-config:/home/vscode/.claude
+    environment:
+      GLPI_VERSION: ${GLPI_VERSION:-latest}
+      GLPI_DIR: /opt/glpi
+      GLPI_ENV: development
+      GLPI_URL: http://127.0.0.1:8080
+      GLPI_LOG_DIR: /opt/glpi/files/_log
+      DB_HOST: db
+      DB_PORT: '3306'
+      DB_NAME: glpi
+      DB_USER: glpi
+      DB_PASSWORD: glpi
+      CLAUDE_CONFIG_DIR: /home/vscode/.claude
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: glpi
+      MARIADB_USER: glpi
+      MARIADB_PASSWORD: glpi
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  glpi:
+  db-data:
+  claude-config:

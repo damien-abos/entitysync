@@ -1,0 +1,79 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+{% set type_labels = {
+    'add': __('Addition', 'entitysync'),
+    'link': __('Link', 'entitysync'),
+    'update': __('Update', 'entitysync'),
+    'delete': __('Deletion', 'entitysync'),
+} %}
+{% set status_classes = {'done': 'success', 'failed': 'danger', 'skipped': 'secondary'} %}
+{% set status_labels = {
+    'done': __('Done', 'entitysync'),
+    'failed': __('Failed', 'entitysync'),
+    'skipped': __('Skipped', 'entitysync'),
+} %}
+
+<div class="card-body">
+    {% if runs is empty %}
+        <div class="alert alert-info">{{ __('No import has been applied yet.', 'entitysync') }}</div>
+    {% else %}
+        <p class="text-muted">{{ __('Last %d imports.', 'entitysync')|format(limit) }}</p>
+        <div class="accordion" id="es-runs">
+            {% for run in runs %}
+                {% set open = run.id == highlight %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button {{ open ? '' : 'collapsed' }}" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#es-run-{{ run.id }}"
+                                aria-expanded="{{ open ? 'true' : 'false' }}">
+                            <span class="me-3"><i class="ti ti-calendar me-1"></i>{{ run.date|formatted_datetime }}</span>
+                            <span class="me-3"><i class="ti ti-user me-1"></i>{{ run.user_name }}</span>
+                            <span class="me-3 text-truncate" style="max-width: 20rem"><i class="ti ti-file me-1"></i>{{ run.filename }}</span>
+                            <span class="badge bg-green-lt me-1" title="{{ type_labels.add }}">+{{ run.nb_added }}</span>
+                            <span class="badge bg-azure-lt me-1" title="{{ type_labels.link }}"><i class="ti ti-link"></i> {{ run.nb_linked }}</span>
+                            <span class="badge bg-yellow-lt me-1" title="{{ type_labels.update }}"><i class="ti ti-pencil"></i> {{ run.nb_updated }}</span>
+                            <span class="badge bg-red-lt me-1" title="{{ type_labels.delete }}">−{{ run.nb_deleted }}</span>
+                            {% if run.nb_failed > 0 %}
+                                <span class="badge bg-danger ms-2">{{ __('%d failed', 'entitysync')|format(run.nb_failed) }}</span>
+                            {% endif %}
+                            {% if run.nb_skipped > 0 %}
+                                <span class="badge bg-secondary ms-2">{{ __('%d skipped', 'entitysync')|format(run.nb_skipped) }}</span>
+                            {% endif %}
+                        </button>
+                    </h2>
+                    <div id="es-run-{{ run.id }}" class="accordion-collapse collapse {{ open ? 'show' : '' }}" data-bs-parent="#es-runs">
+                        <div class="accordion-body p-0">
+                            <div class="px-3 py-2 text-muted small">
+                                {{ __('%1$d rows in the file, %2$d operations selected.', 'entitysync')|format(run.nb_rows, run.nb_selected) }}
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>{{ __('Status') }}</th>
+                                            <th>{{ __('Type') }}</th>
+                                            <th>{{ __('Entity') }}</th>
+                                            <th>{{ __('Message', 'entitysync') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for detail in run.details_list %}
+                                            <tr>
+                                                <td><span class="badge bg-{{ status_classes[detail.status] ?? 'secondary' }}">{{ status_labels[detail.status] ?? detail.status }}</span></td>
+                                                <td>{{ type_labels[detail.type] ?? detail.type }}</td>
+                                                <td>{{ detail.path }}</td>
+                                                <td>{{ detail.message }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>

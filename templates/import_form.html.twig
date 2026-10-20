@@ -1,0 +1,59 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+<div class="card-body">
+    {% if levels is empty %}
+        <div class="alert alert-warning">
+            <i class="ti ti-alert-triangle me-1"></i>
+            {{ __('Configure at least one level in the main tab before importing a file.', 'entitysync') }}
+        </div>
+    {% elseif not has_recursive %}
+        <div class="alert alert-danger">
+            <i class="ti ti-lock me-1"></i>
+            {{ __('You need a recursive access to the target root entity.', 'entitysync') }}
+        </div>
+    {% else %}
+        <div class="row">
+            <div class="col-12 col-xl-6">
+                <form method="post" action="{{ action }}" enctype="multipart/form-data" data-submit-once>
+                    <input type="hidden" name="models_id" value="{{ item.getID() }}">
+                    <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="mb-3">
+                        <label class="form-label" for="es-csv-file">{{ __('CSV file', 'entitysync') }}</label>
+                        <input class="form-control" type="file" name="csv_file" id="es-csv-file" accept=".csv,.txt,text/csv" required>
+                        <div class="form-text">{{ __('Maximum size: %s', 'entitysync')|format(max_upload) }}</div>
+                    </div>
+
+                    <button type="submit" name="preview" value="1" class="btn btn-primary">
+                        <i class="ti ti-eye"></i>
+                        <span>{{ __('Preview changes', 'entitysync') }}</span>
+                    </button>
+                    <div class="form-text mt-2">{{ __('Nothing is changed until you select and apply changes on the next screen.', 'entitysync') }}</div>
+                </form>
+            </div>
+
+            <div class="col-12 col-xl-6 mt-3 mt-xl-0">
+                <h4 class="mb-2">{{ __('Expected tree', 'entitysync') }}</h4>
+                <ol class="list-group list-group-numbered">
+                    <li class="list-group-item">
+                        <i class="ti ti-building me-1"></i>
+                        <strong>{{ target_name ?? __('Unknown entity', 'entitysync') }}</strong>
+                        <span class="text-muted">({{ __('target root entity', 'entitysync') }})</span>
+                    </li>
+                    {% for level in levels %}
+                        <li class="list-group-item" style="padding-left: {{ 1 + loop.index }}rem">
+                            <strong>{{ level.label }}</strong>
+                            <span class="text-muted">
+                                — {{ __('key', 'entitysync') }} : {{ level.keyColumns|join(' + ') }}
+                                {% if level.nameColumn %}, {{ __('name', 'entitysync') }} : {{ level.nameColumn }}{% endif %}
+                                {% if level.commentColumns is not empty %}, {{ __('comment', 'entitysync') }} : {{ level.commentColumns|map(c => c.column)|join(', ') }}{% endif %}
+                            </span>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+    {% endif %}
+</div>

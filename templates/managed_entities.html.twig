@@ -1,0 +1,39 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+<div class="card-body">
+    <p class="text-muted">
+        {{ __('Entities created or linked by this model. Only these entities can be proposed for deletion.', 'entitysync') }}
+    </p>
+    {% if rows is empty %}
+        <div class="alert alert-info">{{ __('No managed entity yet.', 'entitysync') }}</div>
+    {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th>{{ __('Entity') }}</th>
+                        <th>{{ __('Key path', 'entitysync') }}</th>
+                        <th>{{ __('Linked on', 'entitysync') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td>
+                                {% if row.completename is not null %}
+                                    <a href="{{ entity_url }}?id={{ row.entity_id }}">{{ row.completename }}</a>
+                                {% else %}
+                                    <span class="text-danger">{{ __('Deleted entity (ID %d)', 'entitysync')|format(row.entity_id) }}</span>
+                                {% endif %}
+                            </td>
+                            <td><code>{{ row.keys }}</code></td>
+                            <td>{{ row.date|formatted_datetime }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>

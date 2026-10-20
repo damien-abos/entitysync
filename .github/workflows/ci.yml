@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  PHP_EXTENSIONS: bcmath, curl, gd, intl, mbstring, mysqli, zip, exif, sodium, opcache
+
+jobs:
+  checks:
+    name: Lint and translations
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: none
+
+      - name: Install gettext
+        run: sudo apt-get update -q && sudo apt-get install -y -q gettext
+
+      - name: Lint PHP and JavaScript
+        run: make lint
+
+      - name: Check translations
+        run: make locales-check
+
+  unit:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, intl
+          tools: none
+
+      - name: Run engine tests
+        run: make test
+
+  e2e:
+    name: E2E (GLPI ${{ matrix.glpi }}, PHP ${{ matrix.php }})
+    needs: [checks, unit]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest supported GLPI with the oldest supported PHP.
+          - glpi: '11.0.0'
+            php: '8.2'
+          # Latest GLPI 11.0.x.
+          - glpi: latest
+            php: '8.4'
+    services:
+      db:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: glpi
+          MARIADB_USER: glpi
+          MARIADB_PASSWORD: glpi
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      GLPI_VERSION: ${{ matrix.glpi }}
+      GLPI_DIR: ${{ github.workspace }}/../glpi
+      GLPI_URL: http://127.0.0.1:8080
+      GLPI_LOG_DIR: ${{ github.workspace }}/../glpi/files/_log
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_NAME: glpi
+      DB_USER: glpi
+      DB_PASSWORD: glpi
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          ini-values: memory_limit=512M, upload_max_filesize=16M, post_max_size=16M
+          tools: none
+
+      - name: Install gettext
+        run: sudo apt-get update -q && sudo apt-get install -y -q gettext
+
+      - name: Install GLPI and the plugin
+        run: make glpi-install
+
+      - name: Start GLPI
+        run: |
+          nohup php -S 127.0.0.1:8080 -t "$GLPI_DIR/public" "$GLPI_DIR/public/index.php" > "$RUNNER_TEMP/php-server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fs -o /dev/null "$GLPI_URL/" && exit 0
+            sleep 1
+          done
+          echo "GLPI did not start" >&2
+          cat "$RUNNER_TEMP/php-server.log" >&2
+          exit 1
+
+      - name: Run the end-to-end scenario
+        run: make e2e
+
+      - name: Collect GLPI logs
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          cp -r "$GLPI_LOG_DIR"/. "$RUNNER_TEMP/logs/" || true
+          cp "$RUNNER_TEMP/php-server.log" "$RUNNER_TEMP/logs/" || true
+
+      - name: Upload GLPI logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: glpi-logs-${{ matrix.glpi }}-php${{ matrix.php }}
+          path: ${{ runner.temp }}/logs
+          retention-days: 7
+
+  package:
+    name: Package
+    needs: [e2e]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the last commit date makes the archive reproducible
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: none
+
+      - name: Install gettext
+        run: sudo apt-get update -q && sudo apt-get install -y -q gettext
+
+      - name: Build the archive
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tools/build-package.sh --tag "$GITHUB_REF_NAME"
+          else
+            tools/build-package.sh
+          fi
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: entitysync-package
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: none
+
+      - name: Install gettext
+        run: sudo apt-get update -q && sudo apt-get install -y -q gettext
+
+      # Rebuilt from the tag: the build is reproducible, so the archive is identical
+      # to the one checked by the package job.
+      - name: Build the archive
+        run: tools/build-package.sh --tag "$GITHUB_REF_NAME"
+
+      - name: Extract the release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="## ${version}" '$0 == v {found = 1; next} found && /^## / {exit} found {print}' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 \
+            --title "Entity Sync ${GITHUB_REF_NAME#v}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag

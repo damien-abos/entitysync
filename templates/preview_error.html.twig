@@ -1,0 +1,29 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title mb-0">
+                <i class="ti ti-file-alert me-1 text-danger"></i>
+                {{ __('The file cannot be imported', 'entitysync') }} —
+                <a href="{{ model.getLinkURL() }}">{{ model.fields['name'] }}</a>
+            </h3>
+        </div>
+        <div class="card-body">
+            <p class="text-muted"><i class="ti ti-file me-1"></i>{{ filename }}</p>
+            <div class="alert alert-danger">
+                <ul class="mb-0">
+                    {% for error in errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <p>{{ __('Check the model configuration (column names must match the header of the file) or the CSV options, then upload the file again.', 'entitysync') }}</p>
+            <a class="btn btn-primary" href="{{ model.getLinkURL() }}">
+                <i class="ti ti-arrow-left"></i><span>{{ __('Back to the model', 'entitysync') }}</span>
+            </a>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,7 @@
+Organisation;Site;Code projet;Projet;Responsable;Budget;Statut
+ACME;SITE-Paris;P001;Migration K8s;Alice;5000;Actif
+ACME;SITE-Paris;P002;Refonte SI;Alice;1500;Actif
+ACME;;P003;Projet orphelin;Alice;;Actif
+ACME;site_Lyon;P004;Datacenter;Alice;20000;Fermé
+Globex;Nantes;;;Bob;;Actif
+Globex;Nantes;P005;Petit projet;Bob;200;Actif

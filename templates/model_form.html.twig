@@ -1,0 +1,68 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+{% extends 'generic_show_form.html.twig' %}
+{% import 'components/form/fields_macros.html.twig' as fields %}
+
+{% block form_fields %}
+    {% set rand = random() %}
+
+    {{ fields.textField('name', item.fields['name'], __('Name'), {'required': true}) }}
+
+    {{ fields.dropdownField('Entity', 'entities_id_target', item.fields['entities_id_target'] ?? 0, __('Target root entity', 'entitysync'), {
+        'entity': -1,
+        'helper': __('Entities are created and managed below this entity.', 'entitysync'),
+    }) }}
+
+    {{ fields.textareaField('comment', item.fields['comment'], __('Comments')) }}
+
+    {{ fields.largeTitle(__('CSV file', 'entitysync'), 'ti ti-file-spreadsheet') }}
+
+    {{ fields.dropdownArrayField('csv_delimiter', item.fields['csv_delimiter'] ?? 'auto', delimiters, __('Delimiter', 'entitysync')) }}
+    {{ fields.dropdownArrayField('csv_encoding', item.fields['csv_encoding'] ?? 'auto', encodings, __('Encoding', 'entitysync')) }}
+    {{ fields.textField('csv_enclosure', item.fields['csv_enclosure'] ?? '"', __('Text delimiter', 'entitysync'), {
+        'maxlength': 1,
+        'helper': __('The first row of the file must contain the column names.', 'entitysync'),
+    }) }}
+
+    {{ fields.largeTitle(__('Levels below the target root entity', 'entitysync'), 'ti ti-sitemap') }}
+    <div class="col-12 mb-3">
+        <input type="hidden" name="levels_json" id="es-levels-json-{{ rand }}" value="{{ levels|json_encode }}">
+        <div id="es-levels-{{ rand }}" class="entitysync-levels"></div>
+    </div>
+
+    {{ fields.largeTitle(__('Filter on CSV rows', 'entitysync'), 'ti ti-filter') }}
+    <div class="col-12 mb-3">
+        <input type="hidden" name="filter_json" id="es-filter-json-{{ rand }}" value="{{ filter|json_encode }}">
+        <div id="es-filter-{{ rand }}" class="entitysync-filter"></div>
+    </div>
+
+    <datalist id="es-columns-{{ rand }}">
+        {% for column in known_columns %}
+            <option value="{{ column }}"></option>
+        {% endfor %}
+    </datalist>
+
+    <script type="application/json" id="es-labels-{{ rand }}">{{ js_labels|json_encode|raw }}</script>
+    <script>
+        (function () {
+            var start = function () {
+                window.EntitySync.initModelForm({
+                    levelsContainer: 'es-levels-{{ rand }}',
+                    levelsInput: 'es-levels-json-{{ rand }}',
+                    filterContainer: 'es-filter-{{ rand }}',
+                    filterInput: 'es-filter-json-{{ rand }}',
+                    columnsList: 'es-columns-{{ rand }}',
+                    labels: JSON.parse(document.getElementById('es-labels-{{ rand }}').textContent),
+                    readOnly: {{ (item.isNewItem() ? item.canCreate() : item.can(item.getID(), constant('UPDATE'))) ? 'false' : 'true' }}
+                });
+            };
+            if (window.EntitySync) {
+                start();
+            } else {
+                document.addEventListener('DOMContentLoaded', start);
+            }
+        })();
+    </script>
+{% endblock %}

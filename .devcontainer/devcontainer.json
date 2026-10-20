@@ -1,0 +1,34 @@
+{
+  "name": "GLPI Entity Sync",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/entitysync",
+  "remoteUser": "vscode",
+  // Keep the compose command (serve.sh) instead of the default sleep loop.
+  "overrideCommand": false,
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "GLPI", "onAutoForward": "notify" }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "xdebug.php-debug",
+        "mblode.twig-language-2",
+        "editorconfig.editorconfig",
+        "github.vscode-github-actions",
+        "timonwong.shellcheck"
+      ],
+      "settings": {
+        "intelephense.environment.includePaths": ["/opt/glpi/src", "/opt/glpi/vendor"],
+        "files.associations": { "*.html.twig": "twig" }
+      }
+    }
+  }
+}
