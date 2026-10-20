@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # Runtime files and directories (everything else is left out: tests, tools, docs, CI...).
-INCLUDE=(setup.php hook.php LICENSE README.md CHANGELOG.md front public src templates)
+INCLUDE=(setup.php hook.php LICENSE README.md CHANGELOG.md ajax front public src templates)
 
 VERSION="$(sed -n "s/^define('PLUGIN_ENTITYSYNC_VERSION', '\(.*\)');/\1/p" setup.php)"
 if [ -z "$VERSION" ]; then

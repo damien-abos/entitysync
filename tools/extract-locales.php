@@ -21,7 +21,7 @@
 declare(strict_types=1);
 
 const DOMAIN = 'entitysync';
-const SCAN_DIRS = ['front', 'src', 'templates'];
+const SCAN_DIRS = ['ajax', 'front', 'src', 'templates'];
 const SCAN_FILES = ['setup.php', 'hook.php'];
 
 $root = dirname(__DIR__);

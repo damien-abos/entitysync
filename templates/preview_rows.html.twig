@@ -1,0 +1,64 @@
+{#
+ # Entity Sync plugin for GLPI
+ # Rows of one page of a preview section (rendered for AJAX calls).
+ # @license GPL-3.0-or-later
+ #}
+{% if rows is empty %}
+    <div class="p-3 text-muted">{{ __('No matching change.', 'entitysync') }}</div>
+{% else %}
+    <table class="table table-sm table-hover card-table mb-0">
+        <tbody>
+            {% for op in rows %}
+                <tr class="{{ op.blocked ? 'entitysync-blocked' : '' }}" data-es-row>
+                    <td class="w-1">
+                        <input type="checkbox" class="form-check-input" data-es-op="{{ op.id }}" data-es-type="{{ op.type }}"
+                               {{ op.blocked or readonly ? 'disabled' : '' }} {{ op.selected ? 'checked' : '' }}
+                               aria-label="{{ op.path }}">
+                    </td>
+                    <td class="text-nowrap entitysync-path">
+                        <strong>{{ op.path }}</strong>
+                        {% if op.entity_id is not null %}
+                            <span class="text-muted small">#{{ op.entity_id }}</span>
+                        {% endif %}
+                        {% if op.line %}
+                            <div class="text-muted small">{{ __('Line %d', 'entitysync')|format(op.line) }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if op.type == 'add' and op.comment is not null and op.comment != '' %}
+                            <div class="small"><span class="text-muted">{{ labels.comment }} :</span>
+                                <pre class="entitysync-pre mb-0">{{ op.comment }}</pre></div>
+                        {% endif %}
+                        {% if op.previous_path %}
+                            <div class="small text-muted">
+                                <i class="ti ti-key me-1"></i>{{ __('Key changed, previously: %s', 'entitysync')|format(op.previous_path) }}
+                            </div>
+                        {% endif %}
+                        {% for change in op.changes %}
+                            <div class="small entitysync-change">
+                                <span class="text-muted">{{ labels[change.field] ?? change.field }} :</span>
+                                {% if change.field == 'comment' %}
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <pre class="entitysync-pre entitysync-old mb-0">{{ change.old is empty ? '∅' : change.old }}</pre>
+                                        <i class="ti ti-arrow-right align-self-center"></i>
+                                        <pre class="entitysync-pre entitysync-new mb-0">{{ change.new is empty ? '∅' : change.new }}</pre>
+                                    </div>
+                                {% else %}
+                                    <del class="entitysync-old">{{ change.old is empty ? '∅' : change.old }}</del>
+                                    <i class="ti ti-arrow-right mx-1"></i>
+                                    <ins class="entitysync-new">{{ change.new }}</ins>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        {% if op.type == 'link' and op.changes is empty %}
+                            <div class="small text-muted">{{ __('No field change.', 'entitysync') }}</div>
+                        {% endif %}
+                        {% for reason in op.block_reasons %}
+                            <div class="small text-danger"><i class="ti ti-ban me-1"></i>{{ reason }}</div>
+                        {% endfor %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}

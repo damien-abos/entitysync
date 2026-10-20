@@ -1,0 +1,114 @@
+{#
+ # Entity Sync plugin for GLPI
+ # Progress of an import job.
+ # @license GPL-3.0-or-later
+ #}
+{% set status_labels = {
+    'queued': __('Waiting for the background task', 'entitysync'),
+    'running': __('Running', 'entitysync'),
+    'cancelling': __('Stopping after the current batch', 'entitysync'),
+    'done': __('Done', 'entitysync'),
+    'cancelled': __('Cancelled', 'entitysync'),
+    'failed': __('Failed', 'entitysync'),
+} %}
+{% set status_colors = {
+    'queued': 'secondary', 'running': 'primary', 'cancelling': 'warning',
+    'done': 'success', 'cancelled': 'secondary', 'failed': 'danger',
+} %}
+{% set labels = {
+    'add': __('Added', 'entitysync'),
+    'link': __('Linked', 'entitysync'),
+    'update': __('Updated', 'entitysync'),
+    'delete': __('Deleted', 'entitysync'),
+    'failed': __('Failed', 'entitysync'),
+    'skipped': __('Skipped', 'entitysync'),
+} %}
+
+<div class="container-fluid" id="es-job" data-es-status-url="{{ statusUrl }}" data-es-active="{{ status.active ? '1' : '0' }}">
+    <div class="card mb-3">
+        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+            <h3 class="card-title mb-0 me-auto">
+                <i class="ti ti-player-play me-1"></i>
+                {{ __('Import job', 'entitysync') }} #{{ job.getID() }} —
+                <a href="{{ model.getLinkURL() }}">{{ model.fields['name'] }}</a>
+            </h3>
+            <span class="text-muted"><i class="ti ti-file me-1"></i>{{ job.fields['filename'] }}</span>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <span class="badge bg-{{ status_colors[status.status] ?? 'secondary' }} text-white fs-5" data-es-job-status>{{ status_labels[status.status] ?? status.status }}</span>
+                {% if status.total > 0 %}
+                    <span class="text-muted" data-es-job-progress-label
+                          data-template="{{ __('%1$d of %2$d operations processed', 'entitysync') }}">
+                        {{ __('%1$d of %2$d operations processed', 'entitysync')|format(status.processed, status.total) }}
+                    </span>
+                {% endif %}
+            </div>
+
+            {% if status.total > 0 %}
+                <div class="progress progress-lg mb-3" style="height: 1.25rem">
+                    <div class="progress-bar {{ status.active ? 'progress-bar-striped progress-bar-animated' : (status.status == 'done' ? 'bg-success' : 'bg-secondary') }}"
+                         role="progressbar" style="width: {{ status.percent }}%" data-es-job-bar
+                         aria-valuenow="{{ status.percent }}" aria-valuemin="0" aria-valuemax="100">{{ status.percent }} %</div>
+                </div>
+            {% endif %}
+
+            <div class="row g-2 mb-3">
+                {% for key, label in labels %}
+                    <div class="col-auto">
+                        <span class="badge bg-secondary-lt fs-6">{{ label }} : <strong data-es-job-count="{{ key }}">{{ status.counts[key] }}</strong></span>
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if status.message %}
+                <div class="alert alert-danger">
+                    <ul class="mb-0">
+                        {% for line in status.message|split("\n") %}<li>{{ line }}</li>{% endfor %}
+                    </ul>
+                </div>
+                {% if status.total == 0 %}
+                    <p>{{ __('Check the model configuration (column names must match the header of the file) or the CSV options, then upload the file again.', 'entitysync') }}</p>
+                {% endif %}
+            {% endif %}
+
+            <div class="alert alert-warning {{ status.active and status.cron.late ? '' : 'd-none' }}" data-es-job-cron-warning>
+                <i class="ti ti-alert-triangle me-1"></i>
+                {{ __('The background task has not run since this import was queued. GLPI automatic actions must be launched by the system cron, for example every minute: %s', 'entitysync')|format('* * * * * php /path/to/glpi/front/cron.php') }}
+                {% if canConfig and status.cron.url %}
+                    <a href="{{ status.cron.url }}" class="ms-1">{{ __('Automatic action settings', 'entitysync') }}</a>
+                {% endif %}
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary {{ status.run_url ? '' : 'd-none' }}" href="{{ status.run_url ?? '#' }}" data-es-job-run>
+                    <i class="ti ti-history"></i><span>{{ __('Show the result', 'entitysync') }}</span>
+                </a>
+                <a class="btn btn-outline-secondary" href="{{ model.getLinkURL() }}">
+                    <i class="ti ti-arrow-left"></i><span>{{ __('Back to the model', 'entitysync') }}</span>
+                </a>
+                {% if canCancel and status.status in ['queued', 'running', 'failed'] %}
+                    <form method="post" action="{{ action }}" class="d-inline" data-es-job-cancel
+                          onsubmit="return window.confirm({{ __('Stop this import? The operations already applied are kept.', 'entitysync')|json_encode }});">
+                        <input type="hidden" name="job" value="{{ job.getID() }}">
+                        <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" name="cancel" value="1" class="btn btn-outline-danger">
+                            <i class="ti ti-player-stop"></i>
+                            <span>{{ status.status == 'failed' ? __('Remove', 'entitysync') : __('Stop the import', 'entitysync') }}</span>
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-footer text-muted small">
+            {{ __('The operations are applied by batches by the GLPI automatic action "%s"; this page refreshes by itself.', 'entitysync')|format('entitysyncApply') }}
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var start = function () { window.EntitySync.initJobStatus('es-job'); };
+        if (window.EntitySync) { start(); } else { document.addEventListener('DOMContentLoaded', start); }
+    })();
+</script>

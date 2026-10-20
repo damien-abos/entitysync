@@ -9,7 +9,6 @@
         'help': __('Entities to create.', 'entitysync'),
         'icon': 'ti ti-circle-plus',
         'color': 'green',
-        'default': true,
     },
     {
         'type': 'link',
@@ -17,7 +16,6 @@
         'help': __('Existing entities with the same name under the same parent, not yet managed by this model (or whose key changed). They will be managed from now on.', 'entitysync'),
         'icon': 'ti ti-link',
         'color': 'azure',
-        'default': true,
     },
     {
         'type': 'update',
@@ -25,7 +23,6 @@
         'help': __('Managed entities whose name, comment or parent differ from the file.', 'entitysync'),
         'icon': 'ti ti-pencil',
         'color': 'yellow',
-        'default': true,
     },
     {
         'type': 'delete',
@@ -33,12 +30,11 @@
         'help': __('Managed entities absent from the filtered file. Deletion is permanent; not selected by default.', 'entitysync'),
         'icon': 'ti ti-trash',
         'color': 'red',
-        'default': false,
     },
 ] %}
+{% set counts = snapshot.counts %}
+{% set stats = snapshot.stats %}
 {% set total = counts.add + counts.link + counts.update + counts.delete %}
-{% set errors = issues|filter(i => i.severity == 'error') %}
-{% set warnings = issues|filter(i => i.severity == 'warning') %}
 
 <div class="container-fluid entitysync-preview" id="es-preview">
     <div class="card mb-3">
@@ -48,7 +44,7 @@
                 {{ __('Import preview', 'entitysync') }} —
                 <a href="{{ model.getLinkURL() }}">{{ model.fields['name'] }}</a>
             </h3>
-            <span class="text-muted"><i class="ti ti-file me-1"></i>{{ filename }}</span>
+            <span class="text-muted"><i class="ti ti-file me-1"></i>{{ job.fields['filename'] }}</span>
         </div>
         <div class="card-body">
             <div class="row g-2">
@@ -57,24 +53,32 @@
                 <div class="col-auto"><span class="badge {{ stats.invalid > 0 ? 'bg-orange-lt' : 'bg-secondary-lt' }} fs-5">{{ __('%d in error', 'entitysync')|format(stats.invalid) }}</span></div>
                 <div class="col-auto"><span class="badge bg-secondary-lt fs-5">{{ __('%d entities expected', 'entitysync')|format(stats.nodes) }}</span></div>
                 <div class="col-auto ms-auto text-muted small align-self-center">
-                    {{ __('Encoding: %1$s, delimiter: %2$s', 'entitysync')|format(csv.encoding, csv.delimiter) }}
+                    {{ __('Encoding: %1$s, delimiter: %2$s', 'entitysync')|format(snapshot.csv.encoding, snapshot.csv.delimiter) }}
                 </div>
             </div>
         </div>
     </div>
 
-    {% if errors is not empty or warnings is not empty %}
+    {% if active_job %}
+        <div class="alert alert-warning">
+            <i class="ti ti-clock me-1"></i>
+            {{ __('Another import of this model is waiting or running. Wait for it to end before applying this one.', 'entitysync') }}
+            <a href="{{ active_job.url }}" class="ms-1">{{ __('Show its progress', 'entitysync') }}</a>
+        </div>
+    {% endif %}
+
+    {% if snapshot.issues is not empty %}
         <div class="card mb-3">
             <div class="card-header">
                 <h4 class="card-title mb-0">
                     <i class="ti ti-alert-triangle me-1"></i>
                     {{ __('Data issues', 'entitysync') }}
-                    {% if errors is not empty %}<span class="badge bg-danger ms-2">{{ errors|length }}</span>{% endif %}
-                    {% if warnings is not empty %}<span class="badge bg-warning ms-1">{{ warnings|length }}</span>{% endif %}
+                    {% if snapshot.errors_total > 0 %}<span class="badge bg-danger ms-2">{{ snapshot.errors_total }}</span>{% endif %}
+                    {% if snapshot.issues_total - snapshot.errors_total > 0 %}<span class="badge bg-warning ms-1">{{ snapshot.issues_total - snapshot.errors_total }}</span>{% endif %}
                 </h4>
             </div>
             <div class="list-group list-group-flush entitysync-issues">
-                {% for issue in issues %}
+                {% for issue in snapshot.issues %}
                     <div class="list-group-item py-1">
                         {% if issue.severity == 'error' %}
                             <i class="ti ti-circle-x text-danger me-1"></i>
@@ -86,11 +90,14 @@
                     </div>
                 {% endfor %}
             </div>
-            {% if errors is not empty %}
-                <div class="card-footer text-muted small">
-                    {{ __('Rows in error are ignored from the faulty level; the entities they refer to are never proposed for deletion.', 'entitysync') }}
-                </div>
-            {% endif %}
+            <div class="card-footer text-muted small">
+                {% if snapshot.issues_total > snapshot.issues|length %}
+                    <div>{{ __('Only the first %1$d of %2$d issues are listed.', 'entitysync')|format(snapshot.issues|length, snapshot.issues_total) }}</div>
+                {% endif %}
+                {% if snapshot.errors_total > 0 %}
+                    <div>{{ __('Rows in error are ignored from the faulty level; the entities they refer to are never proposed for deletion.', 'entitysync') }}</div>
+                {% endif %}
+            </div>
         </div>
     {% endif %}
 
@@ -100,122 +107,95 @@
             {{ __('Nothing to change: GLPI already matches the file.', 'entitysync') }}
         </div>
         <form method="post" action="{{ action }}">
-            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="job" value="{{ job.getID() }}">
             <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" name="cancel" value="1" class="btn btn-outline-secondary">
                 <i class="ti ti-arrow-left"></i><span>{{ __('Back to the model', 'entitysync') }}</span>
             </button>
         </form>
     {% else %}
-        <form method="post" action="{{ action }}" id="es-apply-form" data-submit-once>
-            <input type="hidden" name="token" value="{{ token }}">
-            <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
-
-            <div class="card mb-3 sticky-top entitysync-toolbar">
-                <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <div class="input-icon flex-grow-1" style="max-width: 28rem">
-                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
-                        <input type="search" class="form-control" data-es-search placeholder="{{ __('Filter by entity path…', 'entitysync') }}">
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-es-select="all">{{ __('Select all', 'entitysync') }}</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-es-select="none">{{ __('Select none', 'entitysync') }}</button>
-                    <span class="ms-auto text-muted" data-es-counter
-                          data-template="{{ __('%1$d selected change(s), including %2$d deletion(s)', 'entitysync') }}"></span>
+        <div class="card mb-3 sticky-top entitysync-toolbar">
+            <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+                <div class="input-icon flex-grow-1" style="max-width: 28rem">
+                    <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                    <input type="search" class="form-control" data-es-search
+                           placeholder="{{ __('Filter by entity path…', 'entitysync') }}"
+                           aria-label="{{ __('Filter by entity path…', 'entitysync') }}">
                 </div>
-            </div>
-
-            {% for def in section_defs %}
-                {% set ops = sections[def.type] %}
-                {% if ops is not empty %}
-                    <div class="card mb-3 entitysync-section" data-es-section="{{ def.type }}">
-                        <div class="card-header">
-                            <label class="form-check mb-0 me-2">
-                                <input type="checkbox" class="form-check-input" data-es-section-toggle="{{ def.type }}">
-                            </label>
-                            <h4 class="card-title mb-0">
-                                <i class="{{ def.icon }} text-{{ def.color }} me-1"></i>
-                                {{ def.title }}
-                                <span class="badge bg-{{ def.color }}-lt ms-2">{{ ops|length }}</span>
-                            </h4>
-                            <span class="text-muted small ms-3 d-none d-lg-inline">{{ def.help }}</span>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover card-table mb-0">
-                                <tbody>
-                                    {% for op in ops %}
-                                        <tr class="{{ op.blocked ? 'entitysync-blocked' : '' }}" data-es-row data-path="{{ op.path|lower }}">
-                                            <td class="w-1">
-                                                <input type="checkbox" class="form-check-input" name="ops[]" value="{{ op.id }}"
-                                                       data-es-op="{{ op.id }}" data-es-type="{{ op.type }}"
-                                                       data-es-requires="{{ op.requires|json_encode }}"
-                                                       {{ op.blocked ? 'disabled' : (def.default ? 'checked' : '') }}
-                                                       aria-label="{{ op.path }}">
-                                            </td>
-                                            <td class="text-nowrap entitysync-path">
-                                                <strong>{{ op.path }}</strong>
-                                                {% if op.entity_id is not null %}
-                                                    <span class="text-muted small">#{{ op.entity_id }}</span>
-                                                {% endif %}
-                                                {% if op.line %}
-                                                    <div class="text-muted small">{{ __('Line %d', 'entitysync')|format(op.line) }}</div>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {% if op.type == 'add' and op.comment is not null and op.comment != '' %}
-                                                    <div class="small"><span class="text-muted">{{ labels.comment }} :</span>
-                                                        <pre class="entitysync-pre mb-0">{{ op.comment }}</pre></div>
-                                                {% endif %}
-                                                {% if op.previous_path %}
-                                                    <div class="small text-muted">
-                                                        <i class="ti ti-key me-1"></i>{{ __('Key changed, previously: %s', 'entitysync')|format(op.previous_path) }}
-                                                    </div>
-                                                {% endif %}
-                                                {% for change in op.changes %}
-                                                    <div class="small entitysync-change">
-                                                        <span class="text-muted">{{ labels[change.field] ?? change.field }} :</span>
-                                                        {% if change.field == 'comment' %}
-                                                            <div class="d-flex gap-2 flex-wrap">
-                                                                <pre class="entitysync-pre entitysync-old mb-0">{{ change.old is empty ? '∅' : change.old }}</pre>
-                                                                <i class="ti ti-arrow-right align-self-center"></i>
-                                                                <pre class="entitysync-pre entitysync-new mb-0">{{ change.new is empty ? '∅' : change.new }}</pre>
-                                                            </div>
-                                                        {% else %}
-                                                            <del class="entitysync-old">{{ change.old is empty ? '∅' : change.old }}</del>
-                                                            <i class="ti ti-arrow-right mx-1"></i>
-                                                            <ins class="entitysync-new">{{ change.new }}</ins>
-                                                        {% endif %}
-                                                    </div>
-                                                {% endfor %}
-                                                {% if op.type == 'link' and op.changes is empty %}
-                                                    <div class="small text-muted">{{ __('No field change.', 'entitysync') }}</div>
-                                                {% endif %}
-                                                {% for reason in op.block_reasons %}
-                                                    <div class="small text-danger"><i class="ti ti-ban me-1"></i>{{ reason }}</div>
-                                                {% endfor %}
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                {% if owner %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-es-select="all"
+                            title="{{ __('Every change matching the filter, on every page', 'entitysync') }}">{{ __('Select all', 'entitysync') }}</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-es-select="none"
+                            title="{{ __('Every change matching the filter, on every page', 'entitysync') }}">{{ __('Select none', 'entitysync') }}</button>
                 {% endif %}
-            {% endfor %}
+                <label class="d-flex align-items-center gap-1 ms-2 mb-0 text-muted small">
+                    {{ __('Per page', 'entitysync') }}
+                    <select class="form-select form-select-sm w-auto" data-es-page-size>
+                        {% for size in config.pageSizes %}
+                            <option value="{{ size }}" {{ size == 100 ? 'selected' : '' }}>{{ size }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <span class="ms-auto text-muted" data-es-counter>
+                    {{ __('%1$d selected change(s), including %2$d deletion(s)', 'entitysync')|format(summary.selected, summary.deletions) }}
+                </span>
+            </div>
+        </div>
 
-            <div class="d-flex gap-2 mb-4">
-                <button type="submit" name="apply" value="1" class="btn btn-primary" data-es-apply
-                        data-confirm-delete="{{ __('%d entity(ies) will be permanently deleted. Continue?', 'entitysync') }}">
-                    <i class="ti ti-check"></i><span>{{ __('Apply selected changes', 'entitysync') }}</span>
-                </button>
-                <button type="submit" name="cancel" value="1" class="btn btn-outline-secondary" formnovalidate data-es-cancel>
+        {% for def in section_defs %}
+            {% if counts[def.type] > 0 %}
+                <div class="card mb-3 entitysync-section" data-es-section="{{ def.type }}">
+                    <div class="card-header">
+                        <label class="form-check mb-0 me-2" title="{{ __('Every change of this section matching the filter, on every page', 'entitysync') }}">
+                            <input type="checkbox" class="form-check-input" data-es-section-toggle="{{ def.type }}" {{ owner ? '' : 'disabled' }}>
+                        </label>
+                        <h4 class="card-title mb-0">
+                            <i class="{{ def.icon }} text-{{ def.color }} me-1"></i>
+                            {{ def.title }}
+                            <span class="badge bg-{{ def.color }}-lt ms-2" data-es-section-count>{{ counts[def.type] }}</span>
+                        </h4>
+                        <span class="text-muted small ms-3 d-none d-lg-inline">{{ def.help }}</span>
+                    </div>
+                    <div class="table-responsive" data-es-rows>
+                        <div class="p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span></div>
+                    </div>
+                    <div class="card-footer d-flex align-items-center gap-2 py-2" data-es-pager>
+                        <button type="button" class="btn btn-sm btn-ghost-secondary" data-es-page="first" aria-label="{{ __('First page', 'entitysync') }}"><i class="ti ti-chevrons-left"></i></button>
+                        <button type="button" class="btn btn-sm btn-ghost-secondary" data-es-page="prev" aria-label="{{ __('Previous page', 'entitysync') }}"><i class="ti ti-chevron-left"></i></button>
+                        <span class="small text-muted" data-es-page-label></span>
+                        <button type="button" class="btn btn-sm btn-ghost-secondary" data-es-page="next" aria-label="{{ __('Next page', 'entitysync') }}"><i class="ti ti-chevron-right"></i></button>
+                        <button type="button" class="btn btn-sm btn-ghost-secondary" data-es-page="last" aria-label="{{ __('Last page', 'entitysync') }}"><i class="ti ti-chevrons-right"></i></button>
+                        <span class="small text-muted ms-auto" data-es-items-label></span>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <form method="post" action="{{ action }}" id="es-apply-form" data-submit-once>
+            <input type="hidden" name="job" value="{{ job.getID() }}">
+            <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                {% if owner %}
+                    <button type="submit" name="queue" value="1" class="btn btn-primary" data-es-apply {{ active_job ? 'disabled' : '' }}>
+                        <i class="ti ti-check"></i><span>{{ __('Apply selected changes', 'entitysync') }}</span>
+                    </button>
+                {% endif %}
+                <button type="submit" name="cancel" value="1" class="btn btn-outline-secondary" formnovalidate>
                     <i class="ti ti-x"></i><span>{{ __('Cancel', 'entitysync') }}</span>
                 </button>
             </div>
+            <p class="text-muted small mb-4">
+                <i class="ti ti-info-circle me-1"></i>
+                {{ __('The changes are applied in the background, by batches, by a GLPI automatic action. A progress page is shown after this step.', 'entitysync') }}
+            </p>
         </form>
 
+        <script type="application/json" id="es-preview-config">{{ config|json_encode|raw }}</script>
         <script>
             (function () {
-                var start = function () { window.EntitySync.initPreview('es-apply-form'); };
+                var start = function () {
+                    window.EntitySync.initPreview(JSON.parse(document.getElementById('es-preview-config').textContent));
+                };
                 if (window.EntitySync) { start(); } else { document.addEventListener('DOMContentLoaded', start); }
             })();
         </script>

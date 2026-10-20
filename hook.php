@@ -6,6 +6,8 @@
  * @license GPL-3.0-or-later
  */
 
+use GlpiPlugin\Entitysync\Job;
+use GlpiPlugin\Entitysync\JobStorage;
 use GlpiPlugin\Entitysync\Link;
 use GlpiPlugin\Entitysync\Model;
 use GlpiPlugin\Entitysync\Run;
@@ -79,12 +81,62 @@ function plugin_entitysync_install(): bool
             `nb_failed` int NOT NULL DEFAULT '0',
             `nb_skipped` int NOT NULL DEFAULT '0',
             `details` longtext,
+            `status` varchar(16) NOT NULL DEFAULT 'done',
             PRIMARY KEY (`id`),
             KEY `plugin_entitysync_models_id` (`plugin_entitysync_models_id`),
             KEY `users_id` (`users_id`),
             KEY `date` (`date`)
         ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
     }
+
+    // 1.1.0: final status of the job that produced the run.
+    if (!$DB->fieldExists($runs, 'status')) {
+        $migration->addField($runs, 'status', "varchar(16) NOT NULL DEFAULT 'done'", ['after' => 'details']);
+    }
+
+    $jobs = Job::getTable();
+    if (!$DB->tableExists($jobs)) {
+        $DB->doQuery("CREATE TABLE `$jobs` (
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `plugin_entitysync_models_id` int {$sign} NOT NULL DEFAULT '0',
+            `users_id` int {$sign} NOT NULL DEFAULT '0',
+            `status` varchar(16) NOT NULL DEFAULT 'draft',
+            `filename` varchar(255) DEFAULT NULL,
+            `nb_rows` int NOT NULL DEFAULT '0',
+            `nb_total` int NOT NULL DEFAULT '0',
+            `nb_processed` int NOT NULL DEFAULT '0',
+            `nb_added` int NOT NULL DEFAULT '0',
+            `nb_linked` int NOT NULL DEFAULT '0',
+            `nb_updated` int NOT NULL DEFAULT '0',
+            `nb_deleted` int NOT NULL DEFAULT '0',
+            `nb_failed` int NOT NULL DEFAULT '0',
+            `nb_skipped` int NOT NULL DEFAULT '0',
+            `selection` longtext,
+            `forbidden` text,
+            `results` longtext,
+            `message` text,
+            `plugin_entitysync_runs_id` int {$sign} NOT NULL DEFAULT '0',
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            `date_queued` timestamp NULL DEFAULT NULL,
+            `date_start` timestamp NULL DEFAULT NULL,
+            `date_end` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `plugin_entitysync_models_id` (`plugin_entitysync_models_id`),
+            KEY `users_id` (`users_id`),
+            KEY `status` (`status`),
+            KEY `date_creation` (`date_creation`)
+        ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
+    }
+
+    // Background application of queued imports (GLPI automatic action, run by the system cron).
+    CronTask::register(Job::class, Job::CRON_TASK, MINUTE_TIMESTAMP, [
+        'mode'    => CronTask::MODE_EXTERNAL,
+        'param'   => Job::DEFAULT_BATCH_SIZE,
+        'comment' => 'Entity Sync: applies the queued imports by batches',
+    ]);
+
+    JobStorage::ensureDirectory();
 
     // Full rights for profiles able to update the configuration (super-admins), none for the others.
     $migration->addRight(Model::$rightname, Model::ALL_RIGHTS, [Config::$rightname => UPDATE]);
@@ -101,15 +153,17 @@ function plugin_entitysync_uninstall(): bool
 {
     global $DB;
 
-    foreach ([Run::getTable(), Link::getTable(), Model::getTable()] as $table) {
+    foreach ([Job::getTable(), Run::getTable(), Link::getTable(), Model::getTable()] as $table) {
         if ($DB->tableExists($table)) {
             $DB->doQuery("DROP TABLE `$table`");
         }
     }
 
     ProfileRight::deleteProfileRights([Model::$rightname]);
+    CronTask::unregister('entitysync');
+    JobStorage::removeAll();
 
-    foreach ([Model::class, Run::class] as $itemtype) {
+    foreach ([Model::class, Run::class, Job::class] as $itemtype) {
         $DB->delete('glpi_displaypreferences', ['itemtype' => $itemtype]);
         $DB->delete('glpi_logs', ['itemtype' => $itemtype]);
     }

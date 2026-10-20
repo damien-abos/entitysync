@@ -13,29 +13,32 @@ namespace GlpiPlugin\Entitysync;
 use Glpi\Application\View\TemplateRenderer;
 use Glpi\Exception\Http\AccessDeniedHttpException;
 use Glpi\Exception\Http\BadRequestHttpException;
-use GlpiPlugin\Entitysync\Engine\Csv\CsvData;
+use Glpi\Exception\Http\NotFoundHttpException;
 use GlpiPlugin\Entitysync\Engine\EngineException;
-use GlpiPlugin\Entitysync\Engine\Sync\Applier;
 use GlpiPlugin\Entitysync\Engine\Sync\Operation;
-use GlpiPlugin\Entitysync\Engine\Sync\Plan;
-use GlpiPlugin\Entitysync\Engine\Sync\Planner;
-use GlpiPlugin\Entitysync\Engine\Tree\TreeBuilder;
+use GlpiPlugin\Entitysync\Engine\Sync\Selection;
 use Html;
 use Session;
 
 /**
- * Import workflow: upload → preview (selection panel) → apply.
+ * Import workflow, built around import jobs:
  *
- * The uploaded file is kept in GLPI's temporary directory between the preview and
- * the application; the plan is recomputed against the current GLPI state when the
- * selection is applied, so changes made in between are taken into account.
+ * 1. upload: the file is stored and a draft job is created with a snapshot of the
+ *    preview (operations, issues, counters);
+ * 2. preview: the operations are browsed page by page and selected through AJAX
+ *    calls, the selection being kept in the job (never posted as one field per
+ *    operation, which would hit PHP's max_input_vars limit);
+ * 3. queue: the job is handed over to the background task, which recomputes the plan
+ *    and applies the selection by batches ({@see JobRunner});
+ * 4. status: progress page, refreshed while the job runs.
  */
 final class ImportController
 {
-    private const SESSION_KEY = 'plugin_entitysync_uploads';
+    /** Page sizes offered in the preview. */
+    public const PAGE_SIZES = [50, 100, 500];
 
-    /** Uploads older than this are forgotten (seconds). */
-    private const UPLOAD_TTL = 86400;
+    /** Data issues displayed in the preview (the total is always shown). */
+    public const ISSUES_LIMIT = 200;
 
     public static function getUrl(): string
     {
@@ -44,8 +47,15 @@ final class ImportController
         return $CFG_GLPI['root_doc'] . '/plugins/entitysync/front/import.php';
     }
 
+    public static function getAjaxUrl(string $script): string
+    {
+        global $CFG_GLPI;
+
+        return $CFG_GLPI['root_doc'] . '/plugins/entitysync/ajax/' . $script . '.php';
+    }
+
     /**
-     * Stores the uploaded file and returns the preview URL.
+     * Stores the uploaded file, computes the preview and returns the URL of the job.
      *
      * @param array<string, mixed> $post
      * @param array<string, mixed> $files
@@ -53,7 +63,6 @@ final class ImportController
     public function upload(array $post, array $files): string
     {
         $model = $this->loadModel((int) ($post['models_id'] ?? 0));
-        self::purgeExpiredUploads();
 
         $file = $files['csv_file'] ?? null;
         if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) $file['tmp_name'])) {
@@ -61,151 +70,343 @@ final class ImportController
             return $model->getLinkURL();
         }
 
-        $token = bin2hex(random_bytes(16));
-        $path = GLPI_TMP_DIR . '/entitysync_' . $token . '.csv';
-        if (!move_uploaded_file((string) $file['tmp_name'], $path)) {
+        $job = new Job();
+        $jobId = (int) $job->add([
+            'plugin_entitysync_models_id' => $model->getID(),
+            'users_id'                    => Session::getLoginUserID(),
+            'status'                      => Job::STATUS_DRAFT,
+            'filename'                    => mb_substr(basename((string) ($file['name'] ?? 'import.csv')), 0, 255),
+            '_no_message'                 => true,
+        ]);
+        if ($jobId <= 0 || !JobStorage::storeUpload((string) $file['tmp_name'], $jobId)) {
+            if ($jobId > 0) {
+                $job->delete(['id' => $jobId], true);
+            }
             Session::addMessageAfterRedirect(__s('The file could not be stored.', 'entitysync'), false, ERROR);
             return $model->getLinkURL();
         }
 
-        $_SESSION[self::SESSION_KEY][$token] = [
-            'models_id' => $model->getID(),
-            'path'      => $path,
-            'filename'  => basename((string) ($file['name'] ?? 'import.csv')),
-            'time'      => time(),
-        ];
-
-        return self::getUrl() . '?token=' . $token;
-    }
-
-    /**
-     * Displays the selection panel.
-     */
-    public function preview(string $token): void
-    {
-        [$model, $upload] = $this->loadUpload($token);
-
         try {
-            $csv = $model->csvReader()->readFile($upload['path']);
+            $csv = $model->csvReader()->readFile(JobStorage::csvPath($jobId));
             $model->rememberColumns($csv->columns);
-            $plan = $this->computePlan($model, $csv);
+            $plan = PlanFactory::compute($model, $csv, GlpiGateway::forbiddenTypes());
         } catch (EngineException $e) {
-            TemplateRenderer::getInstance()->display('@entitysync/preview_error.html.twig', [
-                'model'    => $model,
-                'filename' => $upload['filename'],
-                'errors'   => explode("\n", $e->getMessage()),
-            ]);
-            return;
+            $job->updateFields(['status' => Job::STATUS_FAILED, 'message' => $e->getMessage()]);
+            JobStorage::remove($jobId);
+            return Job::getUrl($jobId);
         }
 
-        $sections = [];
-        foreach ([Operation::TYPE_ADD, Operation::TYPE_LINK, Operation::TYPE_UPDATE, Operation::TYPE_DELETE] as $type) {
-            $sections[$type] = array_map(static fn (Operation $op): array => $op->toArray(), $plan->ofType($type));
+        $operations = [];
+        foreach ($plan->operations as $id => $op) {
+            $operations[$id] = $op->toArray();
         }
+        $issues = array_map(static fn ($issue): array => $issue->toArray(), $plan->issues);
 
-        TemplateRenderer::getInstance()->display('@entitysync/preview.html.twig', [
-            'model'     => $model,
-            'token'     => $token,
-            'action'    => self::getUrl(),
-            'filename'  => $upload['filename'],
-            'csv'       => [
-                'columns'   => $csv->columns,
+        JobStorage::writeSnapshot($jobId, [
+            'csv'          => [
                 'encoding'  => $csv->detectedEncoding,
                 'delimiter' => $csv->detectedDelimiter === "\t" ? 'TAB' : $csv->detectedDelimiter,
             ],
-            'stats'     => [
+            'stats'        => [
                 'rows'     => $plan->build->totalRows,
                 'filtered' => $plan->build->filteredOutRows,
                 'invalid'  => $plan->build->invalidRows,
                 'nodes'    => count($plan->build->nodes),
             ],
-            'counts'    => $plan->counts(),
-            'sections'  => $sections,
-            'issues'    => array_map(static fn ($issue) => $issue->toArray(), $plan->issues),
-            'labels'    => [
-                'name'    => __('Name'),
-                'comment' => __('Comments'),
-                'parent'  => __('Parent entity', 'entitysync'),
+            'counts'       => $plan->counts(),
+            'issues'       => array_slice($issues, 0, self::ISSUES_LIMIT),
+            'issues_total' => count($issues),
+            'errors_total' => count(array_filter($issues, static fn (array $i): bool => $i['severity'] === 'error')),
+            'operations'   => $operations,
+        ]);
+
+        $job->updateFields([
+            'nb_rows'   => $plan->build->totalRows,
+            'selection' => json_encode(Selection::defaultIds($operations)),
+        ]);
+
+        return Job::getUrl($jobId);
+    }
+
+    /**
+     * Displays a job: the selection panel for a draft, the progress page otherwise.
+     */
+    public function show(int $jobId): void
+    {
+        [$job, $model] = $this->loadJob($jobId);
+
+        if ($job->fields['status'] !== Job::STATUS_DRAFT) {
+            $this->showStatus($job, $model);
+            return;
+        }
+
+        $snapshot = JobStorage::readSnapshot($job->getID());
+        if ($snapshot === null) {
+            $job->delete(['id' => $job->getID()], true);
+            Session::addMessageAfterRedirect(__s('This import has expired. Please upload the file again.', 'entitysync'), false, WARNING);
+            Html::redirect($model->getLinkURL());
+        }
+
+        $selection = new Selection($snapshot['operations'], $job->getSelection());
+        $active = Job::findActiveForModel($model->getID());
+
+        TemplateRenderer::getInstance()->display('@entitysync/preview.html.twig', [
+            'model'       => $model,
+            'job'         => $job,
+            'action'      => self::getUrl(),
+            'snapshot'    => $snapshot,
+            'summary'     => $selection->summary(),
+            'owner'       => $job->isOwnedByCurrentUser(),
+            'active_job'  => $active !== null ? ['id' => $active->getID(), 'url' => Job::getUrl($active->getID())] : null,
+            'config'      => [
+                'job'          => $job->getID(),
+                'pageUrl'      => self::getAjaxUrl('preview'),
+                'selectionUrl' => self::getAjaxUrl('selection'),
+                'pageSizes'    => self::PAGE_SIZES,
+                'readOnly'     => !$job->isOwnedByCurrentUser(),
+                'labels'       => [
+                    'page'     => __('Page %1$d of %2$d', 'entitysync'),
+                    'items'    => __('%d item(s)', 'entitysync'),
+                    'counter'  => __('%1$d selected change(s), including %2$d deletion(s)', 'entitysync'),
+                    'confirm'  => __('%d entity(ies) will be permanently deleted. Continue?', 'entitysync'),
+                    'empty'    => __('No matching change.', 'entitysync'),
+                    'error'    => __('The server could not be reached. Reload the page.', 'entitysync'),
+                ],
             ],
         ]);
     }
 
     /**
-     * Applies the selected operations and returns the URL to redirect to.
+     * Rows of one section of the preview (AJAX).
      *
-     * @param array<string, mixed> $post
+     * @param array<string, mixed> $query
+     *
+     * @return array<string, mixed>
      */
-    public function apply(array $post): string
+    public function page(array $query): array
     {
-        $token = (string) ($post['token'] ?? '');
-        [$model, $upload] = $this->loadUpload($token);
+        [$job, , $snapshot] = $this->loadDraft((int) ($query['job'] ?? 0));
+        $type = (string) ($query['type'] ?? '');
+        if (!in_array($type, Selection::TYPES, true)) {
+            throw new BadRequestHttpException();
+        }
+        $size = (int) ($query['size'] ?? 100);
+        if (!in_array($size, self::PAGE_SIZES, true)) {
+            $size = 100;
+        }
 
-        $selected = array_values(array_filter(
-            array_map('strval', (array) ($post['ops'] ?? [])),
-            static fn (string $id): bool => preg_match('/^[0-9a-f]{16}$/', $id) === 1,
-        ));
-        if ($selected === []) {
+        $selection = new Selection($snapshot['operations'], $job->getSelection());
+        $page = $selection->page($type, (string) ($query['q'] ?? ''), (int) ($query['page'] ?? 1), $size);
+
+        $rows = [];
+        foreach ($page['ids'] as $id) {
+            $rows[] = $snapshot['operations'][$id] + ['selected' => $selection->isSelected($id)];
+        }
+
+        $html = TemplateRenderer::getInstance()->render('@entitysync/preview_rows.html.twig', [
+            'rows'     => $rows,
+            'readonly' => !$job->isOwnedByCurrentUser(),
+            'labels'   => self::fieldLabels(),
+        ]);
+
+        return ['html' => $html, 'ids' => $page['ids']] + array_diff_key($page, ['ids' => true]);
+    }
+
+    /**
+     * Changes the selection of a draft (AJAX).
+     *
+     * Actions: select / deselect (explicit ids), select_matching / deselect_matching
+     * (every operation matching the search, optionally limited to one type, on every page).
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array<string, mixed>
+     */
+    public function select(array $input): array
+    {
+        [$job, , $snapshot] = $this->loadDraft((int) ($input['job'] ?? 0));
+        if (!$job->isOwnedByCurrentUser()) {
+            throw new AccessDeniedHttpException();
+        }
+
+        $selection = new Selection($snapshot['operations'], $job->getSelection());
+        $ids = array_values(array_map('strval', (array) ($input['ids'] ?? [])));
+        $type = isset($input['type']) && in_array($input['type'], Selection::TYPES, true) ? (string) $input['type'] : null;
+        $query = (string) ($input['q'] ?? '');
+
+        switch ((string) ($input['action'] ?? '')) {
+            case 'select':
+                $selection->select($ids);
+                break;
+            case 'deselect':
+                $selection->deselect($ids);
+                break;
+            case 'select_matching':
+                $selection->selectMatching($type, $query);
+                break;
+            case 'deselect_matching':
+                $selection->deselectMatching($type, $query);
+                break;
+            case 'summary':
+                break;
+            default:
+                throw new BadRequestHttpException();
+        }
+        $job->saveSelection($selection->ids());
+
+        $visible = array_values(array_map('strval', (array) ($input['visible'] ?? [])));
+
+        return [
+            'summary'          => $selection->summary($query),
+            'visible_selected' => array_values(array_filter($visible, $selection->isSelected(...))),
+        ];
+    }
+
+    /**
+     * Hands a draft over to the background task.
+     */
+    public function queue(int $jobId): string
+    {
+        [$job, $model, $snapshot] = $this->loadDraft($jobId);
+        if (!$job->isOwnedByCurrentUser()) {
+            throw new AccessDeniedHttpException();
+        }
+
+        $selection = new Selection($snapshot['operations'], $job->getSelection());
+        if ($selection->ids() === []) {
             Session::addMessageAfterRedirect(__s('No change was selected.', 'entitysync'), false, WARNING);
-            return self::getUrl() . '?token=' . $token;
+            return Job::getUrl($jobId);
         }
 
-        try {
-            $csv = $model->csvReader()->readFile($upload['path']);
-            $plan = $this->computePlan($model, $csv);
-        } catch (EngineException $e) {
-            Session::addMessageAfterRedirect(htmlescape($e->getMessage()), false, ERROR);
-            return self::getUrl() . '?token=' . $token;
+        $active = Job::findActiveForModel($model->getID(), $jobId);
+        if ($active !== null) {
+            Session::addMessageAfterRedirect(
+                __s('Another import of this model is waiting or running. Wait for it to end before applying this one.', 'entitysync'),
+                false,
+                WARNING,
+            );
+            return Job::getUrl($jobId);
         }
 
-        // Large imports create entities one by one through GLPI: do not stop half-way.
-        @set_time_limit(0);
-        $report = (new Applier(new GlpiGateway($model->getID())))->apply($plan, $selected);
-        $runId = Run::record($model, $upload['filename'], $plan->build->totalRows, count($selected), $report);
+        // The background task has no user session: the rights are checked now and kept.
+        $job->updateFields([
+            'status'      => Job::STATUS_QUEUED,
+            'selection'   => json_encode($selection->ids()),
+            'forbidden'   => json_encode(GlpiGateway::forbiddenTypes(), JSON_UNESCAPED_UNICODE),
+            'nb_total'    => count($selection->ids()),
+            'date_queued' => $_SESSION['glpi_currenttime'],
+            'results'     => '{}',
+        ]);
 
-        $this->forgetUpload($token);
-        $this->addSummaryMessage($report);
-
-        return $model->getLinkURL() . '&forcetab=' . urlencode(Model::class . '$2') . '&run=' . $runId;
+        return Job::getUrl($jobId);
     }
 
     /**
-     * Drops an upload without applying it.
+     * Cancels a draft (removed), a queued job (cancelled at once) or a running one
+     * (stopped at the end of its current batch).
      */
-    public function cancel(string $token): string
+    public function cancel(int $jobId): string
     {
-        [$model] = $this->loadUpload($token);
-        $this->forgetUpload($token);
+        [$job, $model] = $this->loadJob($jobId);
+        if (!$job->isOwnedByCurrentUser() && !Session::haveRight(Model::$rightname, UPDATE)) {
+            throw new AccessDeniedHttpException();
+        }
 
-        return $model->getLinkURL();
+        switch ($job->fields['status']) {
+            case Job::STATUS_DRAFT:
+            case Job::STATUS_FAILED:
+                $job->delete(['id' => $job->getID()], true);
+                return $model->getLinkURL();
+            case Job::STATUS_QUEUED:
+                $job->updateFields(['status' => Job::STATUS_CANCELLED, 'date_end' => $_SESSION['glpi_currenttime'], 'selection' => null]);
+                JobStorage::remove($job->getID());
+                break;
+            case Job::STATUS_RUNNING:
+                $job->updateFields(['status' => Job::STATUS_CANCELLING]);
+                break;
+        }
+
+        return Job::getUrl($jobId);
     }
 
     /**
-     * @throws EngineException
+     * Progress of a job (AJAX).
+     *
+     * @return array<string, mixed>
      */
-    private function computePlan(Model $model, CsvData $csv): Plan
+    public function status(int $jobId): array
     {
-        $config = $model->toEngineConfig();
-        $errors = $config->validate($csv->columns);
-        if ($errors !== []) {
-            throw new EngineException(implode("\n", $errors));
-        }
+        [$job, $model] = $this->loadJob($jobId);
 
-        $gateway = new GlpiGateway($model->getID());
-        $build = (new TreeBuilder($config))->build($csv);
-        $planner = new Planner(
-            $config->rootEntityId,
-            $gateway->inspectUsage(...),
-            GlpiGateway::forbiddenTypes(),
-        );
+        return $this->statusData($job, $model);
+    }
 
-        return $planner->plan($build, $gateway->loadState($config->rootEntityId));
+    private function showStatus(Job $job, Model $model): void
+    {
+        TemplateRenderer::getInstance()->display('@entitysync/job_status.html.twig', [
+            'model'     => $model,
+            'job'       => $job,
+            'action'    => self::getUrl(),
+            'status'    => $this->statusData($job, $model),
+            'canCancel' => $job->isOwnedByCurrentUser() || Session::haveRight(Model::$rightname, UPDATE),
+            'canConfig' => Session::haveRight('config', UPDATE),
+            'statusUrl' => self::getAjaxUrl('job') . '?job=' . $job->getID(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function statusData(Job $job, Model $model): array
+    {
+        $f = $job->fields;
+        $total = max(0, (int) $f['nb_total']);
+
+        return [
+            'id'        => $job->getID(),
+            'status'    => (string) $f['status'],
+            'active'    => $job->isActive(),
+            'total'     => $total,
+            'processed' => (int) $f['nb_processed'],
+            'percent'   => $total > 0 ? min(100, (int) floor(100 * (int) $f['nb_processed'] / $total)) : ($job->isActive() ? 0 : 100),
+            'counts'    => [
+                'add'     => (int) $f['nb_added'],
+                'link'    => (int) $f['nb_linked'],
+                'update'  => (int) $f['nb_updated'],
+                'delete'  => (int) $f['nb_deleted'],
+                'failed'  => (int) $f['nb_failed'],
+                'skipped' => (int) $f['nb_skipped'],
+            ],
+            'message'   => (string) ($f['message'] ?? ''),
+            'dates'     => [
+                'queued' => $f['date_queued'],
+                'start'  => $f['date_start'],
+                'end'    => $f['date_end'],
+            ],
+            'cron'      => $job->cronHealth(),
+            'run_url'   => (int) $f['plugin_entitysync_runs_id'] > 0
+                ? $model->getLinkURL() . '&forcetab=' . urlencode(Model::class . '$2') . '&run=' . (int) $f['plugin_entitysync_runs_id']
+                : null,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function fieldLabels(): array
+    {
+        return [
+            Operation::FIELD_NAME    => __('Name'),
+            Operation::FIELD_COMMENT => __('Comments'),
+            Operation::FIELD_PARENT  => __('Parent entity', 'entitysync'),
+        ];
     }
 
     private function loadModel(int $id): Model
     {
         $model = new Model();
         if (!$model->getFromDB($id)) {
-            throw new BadRequestHttpException();
+            throw new NotFoundHttpException();
         }
         if (!$model->can($id, READ) || !Model::canApply()) {
             throw new AccessDeniedHttpException();
@@ -218,76 +419,37 @@ final class ImportController
     }
 
     /**
-     * @return array{0: Model, 1: array{models_id: int, path: string, filename: string, time: int}}
+     * @return array{0: Job, 1: Model}
      */
-    private function loadUpload(string $token): array
+    private function loadJob(int $jobId): array
     {
-        $upload = $_SESSION[self::SESSION_KEY][$token] ?? null;
-        if (!is_array($upload) || !is_file($upload['path'])) {
-            Session::addMessageAfterRedirect(__s('This import has expired or was already applied. Please upload the file again.', 'entitysync'), false, WARNING);
+        $job = new Job();
+        if ($jobId <= 0 || !$job->getFromDB($jobId)) {
+            Session::addMessageAfterRedirect(__s('This import no longer exists.', 'entitysync'), false, WARNING);
             Html::redirect(Model::getSearchURL());
         }
 
-        return [$this->loadModel((int) $upload['models_id']), $upload];
-    }
-
-    private function forgetUpload(string $token): void
-    {
-        $path = $_SESSION[self::SESSION_KEY][$token]['path'] ?? null;
-        if (is_string($path) && is_file($path)) {
-            @unlink($path);
-        }
-        unset($_SESSION[self::SESSION_KEY][$token]);
-    }
-
-    private static function purgeExpiredUploads(): void
-    {
-        foreach ($_SESSION[self::SESSION_KEY] ?? [] as $token => $upload) {
-            if (($upload['time'] ?? 0) < time() - self::UPLOAD_TTL) {
-                if (is_file($upload['path'] ?? '')) {
-                    @unlink($upload['path']);
-                }
-                unset($_SESSION[self::SESSION_KEY][$token]);
-            }
-        }
+        return [$job, $this->loadModel((int) $job->fields['plugin_entitysync_models_id'])];
     }
 
     /**
-     * @param array{counts: array<string, int>, auto_selected: list<string>, unknown: list<string>} $report
+     * @return array{0: Job, 1: Model, 2: array<string, mixed>}
      */
-    private function addSummaryMessage(array $report): void
+    private function loadDraft(int $jobId): array
     {
-        $counts = $report['counts'];
-        $message = sprintf(
-            __('Import applied: %1$d added, %2$d linked, %3$d updated, %4$d deleted.', 'entitysync'),
-            $counts['add'],
-            $counts['link'],
-            $counts['update'],
-            $counts['delete'],
-        );
-        $type = INFO;
-        if ($counts['failed'] > 0 || $counts['skipped'] > 0) {
-            $message .= ' ' . sprintf(
-                __('%1$d failed, %2$d skipped: see the run details.', 'entitysync'),
-                $counts['failed'],
-                $counts['skipped'],
-            );
-            $type = WARNING;
+        $job = new Job();
+        if ($jobId <= 0 || !$job->getFromDB($jobId)) {
+            throw new NotFoundHttpException();
         }
-        if ($report['auto_selected'] !== []) {
-            $message .= ' ' . sprintf(
-                __('%d required operation(s) were added to your selection.', 'entitysync'),
-                count($report['auto_selected']),
-            );
+        $model = $this->loadModel((int) $job->fields['plugin_entitysync_models_id']);
+        if ($job->fields['status'] !== Job::STATUS_DRAFT) {
+            throw new BadRequestHttpException(__('This import is no longer editable.', 'entitysync'));
         }
-        if ($report['unknown'] !== []) {
-            $message .= ' ' . sprintf(
-                __('%d selected operation(s) no longer apply because the data changed since the preview.', 'entitysync'),
-                count($report['unknown']),
-            );
-            $type = WARNING;
+        $snapshot = JobStorage::readSnapshot($job->getID());
+        if ($snapshot === null) {
+            throw new NotFoundHttpException();
         }
 
-        Session::addMessageAfterRedirect(htmlescape($message), false, $type);
+        return [$job, $model, $snapshot];
     }
 }

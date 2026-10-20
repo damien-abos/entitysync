@@ -24,9 +24,20 @@ final class Applier
     public const STATUS_FAILED = 'failed';
     public const STATUS_SKIPPED = 'skipped';
 
+    /** @var array<string, int> Path id => id of the entity created by this instance. */
+    private array $created = [];
+
+    /** @var array<string, string> Operation id => status, for the operations applied by this instance. */
+    private array $status = [];
+
+    private bool $staleLinksCleaned = false;
+
     public function __construct(private readonly GatewayInterface $gateway) {}
 
     /**
+     * Applies a selection in one go: the selection is first expanded with the
+     * operations it requires.
+     *
      * @param list<string> $selectedIds Operation ids chosen by the user.
      *
      * @return array{
@@ -39,8 +50,35 @@ final class Applier
     public function apply(Plan $plan, array $selectedIds): array
     {
         $selection = $plan->expandSelection($selectedIds);
+        $report = $this->applyBatch($plan, $selection['selected']);
 
-        if ($plan->staleLinkIds !== []) {
+        return $report + [
+            'auto_selected' => $selection['added'],
+            'unknown'       => $selection['unknown'],
+        ];
+    }
+
+    /**
+     * Applies exactly the given operations (no expansion), in execution order.
+     *
+     * Can be called several times on the same instance and plan (successive batches):
+     * entities created by earlier calls are known to later ones. A prerequisite must
+     * have been applied by this instance; when the prerequisite was applied by an
+     * earlier run, the recomputed plan no longer contains it nor the requirement.
+     * A prerequisite that failed earlier and is not re-submitted makes its dependents
+     * skipped.
+     *
+     * @param list<string> $ids
+     *
+     * @return array{
+     *     results: list<array{id: string, type: string, path: string, status: string, message: string}>,
+     *     counts: array<string, int>
+     * }
+     */
+    public function applyBatch(Plan $plan, array $ids): array
+    {
+        if ($plan->staleLinkIds !== [] && !$this->staleLinksCleaned) {
+            $this->staleLinksCleaned = true;
             try {
                 $this->gateway->removeLinksById($plan->staleLinkIds);
             } catch (\RuntimeException) {
@@ -48,12 +86,41 @@ final class Applier
             }
         }
 
-        /** @var array<string, int> $created path id => entity id created during this run */
-        $created = [];
-        /** @var array<string, string> $status operation id => status */
-        $status = [];
         $results = [];
-        $counts = [
+        $counts = self::emptyCounts();
+
+        foreach ($plan->executionOrder($ids) as $op) {
+            $id = $op->id();
+
+            $skipReason = $this->skipReason($op, $plan);
+            if ($skipReason !== null) {
+                $this->status[$id] = self::STATUS_SKIPPED;
+                $counts[self::STATUS_SKIPPED]++;
+                $results[] = $this->result($op, self::STATUS_SKIPPED, $skipReason);
+                continue;
+            }
+
+            try {
+                $message = $this->applyOne($op, $this->created);
+                $this->status[$id] = self::STATUS_DONE;
+                $counts[$op->type]++;
+                $results[] = $this->result($op, self::STATUS_DONE, $message);
+            } catch (\RuntimeException $e) {
+                $this->status[$id] = self::STATUS_FAILED;
+                $counts[self::STATUS_FAILED]++;
+                $results[] = $this->result($op, self::STATUS_FAILED, $e->getMessage());
+            }
+        }
+
+        return ['results' => $results, 'counts' => $counts];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public static function emptyCounts(): array
+    {
+        return [
             Operation::TYPE_ADD    => 0,
             Operation::TYPE_LINK   => 0,
             Operation::TYPE_UPDATE => 0,
@@ -61,49 +128,18 @@ final class Applier
             self::STATUS_FAILED    => 0,
             self::STATUS_SKIPPED   => 0,
         ];
-
-        foreach ($plan->executionOrder($selection['selected']) as $op) {
-            $id = $op->id();
-
-            $skipReason = $this->skipReason($op, $plan, $status);
-            if ($skipReason !== null) {
-                $status[$id] = self::STATUS_SKIPPED;
-                $counts[self::STATUS_SKIPPED]++;
-                $results[] = $this->result($op, self::STATUS_SKIPPED, $skipReason);
-                continue;
-            }
-
-            try {
-                $message = $this->applyOne($op, $created);
-                $status[$id] = self::STATUS_DONE;
-                $counts[$op->type]++;
-                $results[] = $this->result($op, self::STATUS_DONE, $message);
-            } catch (\RuntimeException $e) {
-                $status[$id] = self::STATUS_FAILED;
-                $counts[self::STATUS_FAILED]++;
-                $results[] = $this->result($op, self::STATUS_FAILED, $e->getMessage());
-            }
-        }
-
-        return [
-            'results'       => $results,
-            'counts'        => $counts,
-            'auto_selected' => $selection['added'],
-            'unknown'       => $selection['unknown'],
-        ];
     }
 
-    /**
-     * @param array<string, string> $status
-     */
-    private function skipReason(Operation $op, Plan $plan, array $status): ?string
+    private function skipReason(Operation $op, Plan $plan): ?string
     {
         if ($op->isBlocked()) {
             return implode(' ', $op->blockReasons);
         }
 
         foreach ($op->requires as $required) {
-            if (($status[$required] ?? null) !== self::STATUS_DONE) {
+            // Requirements always point to operations of the same plan: a prerequisite
+            // applied by an earlier run is no longer in the plan, so it is not listed.
+            if (($this->status[$required] ?? null) !== self::STATUS_DONE) {
                 $requiredOp = $plan->get($required);
 
                 return Msg::t(

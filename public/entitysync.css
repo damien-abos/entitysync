@@ -78,3 +78,9 @@
 .entitysync-preview pre.entitysync-new {
     text-decoration: none;
 }
+
+/* Long pages scroll inside their section, so that the pager stays at hand. */
+.entitysync-preview [data-es-rows] {
+    max-height: 70vh;
+    overflow-y: auto;
+}

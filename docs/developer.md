@@ -21,7 +21,7 @@ it. User-facing behaviour is described in the [user guide](en/user-guide.md) and
 
 ### Dev container (recommended)
 
-The repository ships a [dev container](https://containers.dev/) with PHP 8.3, the
+The repository ships a [dev container](https://containers.dev/) with PHP 8.3 on Debian 13, the
 extensions GLPI needs, gettext, shellcheck, Node.js, Claude Code and a MariaDB 10.11
 service.
 
@@ -34,6 +34,10 @@ service.
 3. GLPI is served on <http://localhost:8080> (login `glpi` / `glpi`) by
    `.devcontainer/serve.sh`, PHP's built-in server, which is the container's main
    process. Its log is `/opt/glpi/files/_log/php-server.log`.
+4. `serve.sh` also runs GLPI's cron every minute (`front/cron.php`, log
+   `cron-loop.log`), like the system crontab of a server, so queued imports are
+   applied by the background task. To run it at once:
+   `php /opt/glpi/front/cron.php --force entitysyncApply`.
 
 GLPI runs in the `development` environment: strict Twig variables, debug logs in
 `/opt/glpi/files/_log`. Because the plugin directory is a symbolic link to the
@@ -79,6 +83,7 @@ php -S 127.0.0.1:8080 -t "$GLPI_DIR/public" "$GLPI_DIR/public/index.php"
 ```text
 setup.php, hook.php       Plugin declaration (version, requirements, hooks), install/uninstall
 front/                    Legacy controllers routed by GLPI (/plugins/entitysync/front/*.php)
+ajax/                     JSON endpoints of the preview and the progress page
 src/
   Engine/                 Pure PHP core, no GLPI dependency
     Csv/                  CSV reading (encoding, delimiter detection, header validation)
@@ -91,7 +96,11 @@ src/
   Link.php, Run.php       Managed entities and import history (CommonDBTM)
   ProfileRights.php       Rights tab on profiles
   GlpiGateway.php         Engine gateway: reads GLPI state, writes entities
-  ImportController.php    Upload -> preview -> apply workflow
+  ImportController.php    Upload -> preview -> queue -> status workflow, AJAX handlers
+  Job.php                 Import job (CommonDBTM) and the automatic action entitysyncApply
+  JobRunner.php           Applies a queued job by batches
+  JobStorage.php          Job files in files/_plugins/entitysync/jobs
+  PlanFactory.php         Plan of an import against the current GLPI state
 templates/                Twig views (@entitysync namespace)
 public/                   JavaScript editors and preview logic, CSS (served at /plugins/entitysync/)
 locales/                  entitysync.pot, fr_FR.po, en_GB.po (.mo built, not committed)
@@ -123,8 +132,23 @@ docs/                     User, installation and developer documentation
         │                        Planner                        │
         └───────┬───────────────────────────────────────────────┘
                 │ Plan (operations with dependencies and blocks)
-       preview.html.twig ──► user selection ──► Applier ──► GatewayInterface (GlpiGateway)
+                ▼
+   upload ──► snapshot (JSON file) ──► paginated preview ◄──► Selection (AJAX, kept in the job)
+                                                │ queue
+                                                ▼
+   automatic action entitysyncApply ──► JobRunner: recompute Plan, Applier::applyBatch() by batches
+                                                │
+                                                ▼
+                                     GatewayInterface (GlpiGateway) ──► Run (history)
 ```
+
+An import is an **import job** (`Job`): the upload stores the file and a snapshot of
+the preview (operations as arrays, issues, counters) in `files/_plugins/entitysync/
+jobs`, and the job keeps the selection. The preview pages and the selection changes
+are AJAX calls working on the snapshot, so nothing is posted per operation (PHP's
+`max_input_vars`, 1,000 by default, made larger selections fail with HTTP 400 in
+1.0.x). Queuing hands the job over to the automatic action, which recomputes the plan
+against the current state and applies the selection by batches.
 
 The engine (`src/Engine`) only depends on PHP and `mbstring`/`intl`. Everything that
 touches GLPI goes through `GlpiGateway`, which implements
@@ -172,13 +196,36 @@ the deletion of its managed children) and **block reasons** (items still attache
 unmanaged children, name collision, entity managed by another model, missing
 rights). Blocks propagate to dependent operations.
 
+### Selection
+
+`Selection` works on the array form of the operations (the snapshot). It keeps the
+selection consistent: selecting an operation selects what it requires, unselecting one
+unselects what requires it, blocked operations are never selected. It also provides
+the search (`matching()`), the pages (`page()`), the *select all / none matching*
+actions and the counters of the toolbar and section headers (`summary()`). The default
+selection (`defaultIds()`) is every non-blocked operation except deletions.
+
 ### Applier
 
-`Applier::apply()` expands the selection with the required operations (the same rule
-as the browser), orders it (deletions deepest first, then by level: updates, links,
-additions, so that a name freed by a rename or a deletion can be reused), then
-applies each operation through the gateway. A failure is recorded and the operations
-that require it are skipped; the others go on. The result feeds the import history.
+`Applier::applyBatch()` applies exactly the given operations, in execution order
+(deletions deepest first, then by level: updates, links, additions, so that a name
+freed by a rename or a deletion can be reused). An operation whose prerequisite was not
+applied by the same instance is skipped; a failure is recorded and the others go on.
+The same instance can apply several batches of one plan (entities created by a batch
+are known to the next ones). `Applier::apply()` expands a selection, then applies it in
+one batch.
+
+### Job runner
+
+`JobRunner::run()` is called by the automatic action. At each execution it recomputes
+the plan from the file and the current state, with the rights recorded when the job
+was queued, then applies batches of the selected operations that have no result yet,
+saving the results and counters after each batch, until the time budget (50 s) is
+spent or nothing is left. Across executions, prerequisites applied earlier disappear
+from the recomputed plan, so a batch never waits for them; a prerequisite that failed
+is still in the plan and its dependents are skipped. At the end, selected operations
+that are no longer in the plan are reported as skipped, a `Run` is recorded (also for
+a stopped job) and the files are removed. Cancellation is checked between batches.
 
 ### Messages
 
@@ -192,15 +239,19 @@ strings too.
 | File | Role |
 |---|---|
 | `setup.php` | Version and requirements, class registration, menu (`admin`), CSS/JS hooks, `item_purge` hook on `Entity` |
-| `hook.php` | Install (tables, rights through `Migration::addRight()`), uninstall, purge hook that removes the links of an entity deleted outside the plugin |
+| `hook.php` | Install and update (tables, `status` column of the runs, rights through `Migration::addRight()`, automatic action through `CronTask::register()`, jobs directory), uninstall, purge hook that removes the links of an entity deleted outside the plugin |
 | `src/Model.php` | Model item: form (`templates/model_form.html.twig`), tabs (*Import*, *Managed entities*, *Import runs*, history), input validation (JSON of the editors decoded and validated with the engine), `APPLY` right (128), search options |
-| `src/ImportController.php` | `upload()` stores the file in `GLPI_TMP_DIR` under a random token kept in the session; `preview()` reads it and renders the plan; `apply()` recomputes the plan against the current state, applies the selection and records a `Run`; `cancel()` removes the file |
+| `src/ImportController.php` | `upload()` creates a draft job, stores the file, computes the plan and writes the snapshot; `show()` renders the preview of a draft or the progress page of a queued job; `page()` and `select()` serve the AJAX calls of the preview; `queue()` checks the rights, records them and queues the job; `cancel()` removes a draft, cancels a queued job or asks a running one to stop; `status()` serves the progress page |
+| `src/Job.php` | Import job: statuses (`draft`, `queued`, `running`, `cancelling`, `done`, `cancelled`, `failed`), selection, recorded rights, results; automatic action `cronEntitysyncApply()` (oldest active job first, removal of drafts older than 24 h); health of the action for the progress page |
+| `src/JobRunner.php`, `src/JobStorage.php`, `src/PlanFactory.php` | Batch application, job files, plan computation (shared by the upload and the runner) |
+| `ajax/preview.php`, `ajax/selection.php`, `ajax/job.php` | JSON endpoints: one page of a section (rendered by `templates/preview_rows.html.twig`), selection changes (JSON body, CSRF token in the `X-Glpi-Csrf-Token` header), progress of a job |
 | `src/GlpiGateway.php` | Loads the root subtree and the links; inspects every table with an `entities_id` column to block deletions; writes through `Entity::add/update/delete` so that GLPI rules, history, caches and hooks apply; captures the messages GLPI queues for the user and returns them as operation errors |
 | `src/ProfileRights.php` | Rights matrix tab on profiles |
 
-The plan is never stored: it is recomputed at apply time, and the submitted
-operation ids are matched against the new plan. Ids that no longer exist are
-reported to the user.
+The snapshot is only used to display and select: the plan is recomputed by the
+runner at each execution, and the selected operation ids are matched against it.
+Operation ids are stable (hash of the type and the key path), which makes this
+matching possible.
 
 ## Front end
 
@@ -211,9 +262,13 @@ the `add_javascript` hook and initialized by inline calls in the templates:
   editor** from the JSON stored in hidden inputs (`levels_json`, `filter_json`) and
   writes it back on every change. Column inputs share a `<datalist>` built from the
   header of the last imported file (`known_columns`).
-- `EntitySync.initPreview()` manages the selection in the preview: dependency
-  propagation (`data-es-requires`), section toggles, search, counter and
-  confirmation of deletions.
+- `EntitySync.initPreview()` loads the pages of each section (`ajax/preview.php`),
+  sends every selection change to `ajax/selection.php` (one request at a time) and
+  updates the checkboxes, section toggles and counter from the answer; it handles the
+  search (debounced), the page size (remembered in `localStorage`) and the
+  confirmation of deletions. The selection logic itself is on the server.
+- `EntitySync.initJobStatus()` polls `ajax/job.php` every 3 seconds while a job is
+  active and reloads the page when its status changes.
 
 Labels come from `Model::jsLabels()` (translated on the server) and are passed as
 JSON. To add a label: add it there, use it in the JS, run `make locales`.
@@ -224,15 +279,16 @@ JSON. To add a label: add it there, use it in the JS, run `make locales`.
 |---|---|---|
 | `glpi_plugin_entitysync_models` | `name`, `comment`, `entities_id_target`, `csv_delimiter`, `csv_enclosure`, `csv_encoding`, `levels` (JSON), `filter` (JSON), `known_columns` (JSON), dates | One row per model |
 | `glpi_plugin_entitysync_links` | `plugin_entitysync_models_id`, `entities_id`, `path` (JSON key path), `path_hash` (SHA-1), dates | `UNIQUE (models_id, path_hash)`; defines the managed entities |
-| `glpi_plugin_entitysync_runs` | `plugin_entitysync_models_id`, `users_id`, `date`, `filename`, counters (`nb_*`), `details` (JSON list of operation results) | Import history |
+| `glpi_plugin_entitysync_runs` | `plugin_entitysync_models_id`, `users_id`, `date`, `filename`, counters (`nb_*`), `details` (JSON list of operation results), `status` (final status of the job) | Import history |
+| `glpi_plugin_entitysync_jobs` | `plugin_entitysync_models_id`, `users_id`, `status`, `filename`, `nb_rows`, `nb_total`, `nb_processed`, counters (`nb_*`), `selection` (JSON ids), `forbidden` (JSON rights restrictions), `results` (JSON, id → result), `message`, `plugin_entitysync_runs_id`, dates (`date_queued`, `date_start`, `date_end`) | Import jobs; `selection` and `results` are cleared when the job ends |
 
 The JSON formats of `levels` and `filter` are documented in the docblocks of
 `Engine\Config\LevelConfig` and `Engine\Filter\FilterEvaluator`.
 
-**Schema changes.** `plugin_entitysync_install()` currently creates missing tables
-only. When a release changes the schema, add the migration there with GLPI's
-`Migration` API (`addField`, `changeField`, `addKey`...), guarded by checks on the
-current schema, and bump `PLUGIN_ENTITYSYNC_VERSION` so GLPI asks for the update.
+**Schema changes.** `plugin_entitysync_install()` creates the missing tables and
+applies the migrations, guarded by checks on the current schema (1.1.0 added the
+`jobs` table and `runs.status` with `Migration::addField()`). For a new change, add the
+migration there and bump `PLUGIN_ENTITYSYNC_VERSION` so that GLPI asks for the update.
 
 ## Translations
 
@@ -272,10 +328,16 @@ public function testSomething(): void
 ### End-to-end scenario
 
 `tests/e2e/run.php` drives a running GLPI over HTTP (login, CSRF tokens, forms,
-multipart upload, AJAX tabs) and checks the database. It creates its own target root
-entity and model, then runs: initial import, idempotent re-import, adoption of an
-existing entity, sibling name collision, deletions blocked by an item, server-side
-dependency expansion, and full cleanup. It fails on any new line in
+multipart upload, AJAX tabs, paginated preview, JSON selection calls) and runs GLPI's
+cron (`front/cron.php --force entitysyncApply`, from `GLPI_DIR`) until each job ends,
+then checks the database. It creates its own target root entity and model, then runs:
+initial import, idempotent re-import, adoption of an existing entity, sibling name
+collision, deletions blocked by an item, server-side dependency expansion, a job
+stopped before it runs, and a volume import (1,200 rows, 1,320 operations, more than
+PHP's default `max_input_vars`; `E2E_VOLUME_ROWS` changes it, 0 skips it), and full
+cleanup. With `define('PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET', 1);` in GLPI's
+`config/local_define.php`, executions are cut after one second, which exercises the
+resumption over several executions (the CI sets 2 seconds). It fails on any new line in
 `php-errors.log` when `GLPI_LOG_DIR` is set (the dev container and the CI set it).
 When it fails, what it created is left in place for inspection: an
 `E2E entitysync <date>` entity and an `E2E model` import model.
@@ -291,7 +353,7 @@ Its variables are documented at the top of the file. In the dev container,
 |---|---|
 | Lint and translations | `make lint`, `make locales-check` |
 | Unit tests | `make test` on PHP 8.2 to 8.5 |
-| E2E | GLPI 11.0.0 with PHP 8.2, and the latest GLPI 11.0.x with PHP 8.4, on MariaDB 10.11, GLPI in `development` mode; GLPI logs uploaded on failure |
+| E2E | GLPI 11.0.0 with PHP 8.2, and the latest GLPI 11.0.x with PHP 8.4, on MariaDB 10.11, GLPI in `development` mode, background task cut after 2 s to exercise resumption; GLPI logs uploaded on failure |
 | Package | `tools/build-package.sh`, archive and checksum uploaded as the `entitysync-package` artifact |
 | GitHub release | On `v*` tags only: rebuilds the archive, extracts the notes of the version from `CHANGELOG.md`, creates the release with the archive and its checksum |
 
@@ -333,6 +395,17 @@ Points learned while building the plugin against GLPI 11.0:
   case- and accent-insensitive collation; `Entity::pre_deleteItem()` refuses to
   delete an entity with children; `Entity::post_addItem()` adds the new entity to the
   session's active entities.
+- **Form size.** PHP drops the fields beyond `max_input_vars` (1,000 by default) and
+  GLPI 11 then answers HTTP 400: never post one field per row of a large list.
+- **Automatic actions.** In *GLPI* (internal) mode, GLPI 11 only triggers automatic
+  actions from the login page; background work needs the CLI mode and a system cron.
+  `front/cron.php --force <name>` runs one action at once. In the cron context there
+  is no user session (`Session::isCron()`), the active entity is the root entity.
+  On GLPI 11.0.0, `front/cron.php` crashes when run as root even with
+  `--allow-superuser` (fixed in later 11.0.x): run it as the web server user.
+- **AJAX.** Plugin scripts in `ajax/` are routed like `front/`; POST requests sent with
+  `X-Requested-With: XMLHttpRequest` are checked against the `X-Glpi-Csrf-Token`
+  header (`getAjaxCsrfToken()` reads it from the page), and the token is kept.
 - **Messages.** `CommonDBTM` methods queue user messages in
   `$_SESSION['MESSAGE_AFTER_REDIRECT']`; pass `_no_message` and capture the rest (see
   `GlpiGateway::guard()`).

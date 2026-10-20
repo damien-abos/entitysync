@@ -196,4 +196,72 @@ final class ApplierTest extends TestCase
 
         $this->assertFalse(isset($gateway->links[Path::id(['Ghost'])]));
     }
+
+    /**
+     * Simulates a background job: each "run" recomputes the plan from the current
+     * state and applies batches of the remaining selected operations.
+     *
+     * @return array{statuses: array<string, string>, runs: int}
+     */
+    private function simulateJob(MemoryGateway $gateway, string $csv, int $batchSize, int $batchesPerRun): array
+    {
+        $config = $this->config($this->levels());
+        $selected = array_keys($this->plan($csv, $config, $gateway->state())->operations);
+        $statuses = [];
+        $runs = 0;
+        while (true) {
+            $plan = $this->plan($csv, $config, $gateway->state());
+            $remaining = array_values(array_filter(
+                $selected,
+                static fn (string $id): bool => $plan->get($id) !== null && !isset($statuses[$id]),
+            ));
+            if ($remaining === []) {
+                break;
+            }
+            $runs++;
+            $this->assertTrue($runs < 50, 'job terminates');
+            $ordered = array_map(static fn ($op) => $op->id(), $plan->executionOrder($remaining));
+            $applier = new Applier($gateway);
+            foreach (array_slice(array_chunk($ordered, $batchSize), 0, $batchesPerRun) as $batch) {
+                foreach ($applier->applyBatch($plan, $batch)['results'] as $result) {
+                    $statuses[$result['id']] = $result['status'];
+                }
+            }
+        }
+
+        return ['statuses' => $statuses, 'runs' => $runs];
+    }
+
+    public function testBatchedRunsGiveTheSameResultAsASingleApplication(): void
+    {
+        $gateway = $this->gateway();
+        $job = $this->simulateJob($gateway, self::CSV, 2, 1);
+
+        $this->assertSame(4, $job['runs'], '7 operations by batches of 2');
+        $this->assertSame(array_fill(0, 7, 'done'), array_values($job['statuses']));
+        $this->assertTrue($this->plan(self::CSV, $this->config($this->levels()), $gateway->state())->isEmpty());
+    }
+
+    public function testSeveralBatchesInOneRunShareCreatedParents(): void
+    {
+        $gateway = $this->gateway();
+        $job = $this->simulateJob($gateway, self::CSV, 1, 10);
+
+        $this->assertSame(1, $job['runs']);
+        $this->assertSame(7, count(array_filter($job['statuses'], static fn (string $s): bool => $s === 'done')));
+    }
+
+    public function testFailedParentInAnEarlierRunSkipsItsChildrenLater(): void
+    {
+        $gateway = $this->gateway();
+        $gateway->failOn = ['ACME'];
+        $job = $this->simulateJob($gateway, self::CSV, 1, 1);
+
+        $counts = array_count_values($job['statuses']);
+        $this->assertSame(['failed' => 1, 'done' => 2, 'skipped' => 4], [
+            'failed'  => $counts['failed'] ?? 0,
+            'done'    => $counts['done'] ?? 0,
+            'skipped' => $counts['skipped'] ?? 0,
+        ]);
+    }
 }

@@ -109,7 +109,11 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q gettext
 
       - name: Install GLPI and the plugin
-        run: make glpi-install
+        run: |
+          make glpi-install
+          # Short executions of the background task, so that the e2e scenario also
+          # checks that a job resumes over several runs.
+          echo "define('PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET', 2);" >> "$GLPI_DIR/config/local_define.php"
 
       - name: Start GLPI
         run: |

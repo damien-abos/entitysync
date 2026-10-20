@@ -3,6 +3,29 @@
  # @license GPL-3.0-or-later
  #}
 <div class="card-body">
+    {% if jobs is not empty %}
+        {% set job_labels = {
+            'draft': __('Preview not applied', 'entitysync'),
+            'queued': __('Waiting for the background task', 'entitysync'),
+            'running': __('Running', 'entitysync'),
+            'cancelling': __('Stopping after the current batch', 'entitysync'),
+        } %}
+        <div class="mb-3">
+            <h4 class="mb-2">{{ __('Imports in progress', 'entitysync') }}</h4>
+            <div class="list-group">
+                {% for job in jobs %}
+                    <a class="list-group-item list-group-item-action d-flex flex-wrap align-items-center gap-2" href="{{ job.url }}">
+                        <span class="badge {{ job.status == 'draft' ? 'bg-secondary-lt' : 'bg-primary' }}">{{ job_labels[job.status] ?? job.status }}</span>
+                        <span><i class="ti ti-file me-1"></i>{{ job.filename }}</span>
+                        <span class="text-muted small">{{ job.user_name }} — {{ job.date_creation|formatted_datetime }}</span>
+                        {% if job.nb_total > 0 %}
+                            <span class="ms-auto small">{{ __('%1$d of %2$d operations processed', 'entitysync')|format(job.nb_processed, job.nb_total) }}</span>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
     {% if levels is empty %}
         <div class="alert alert-warning">
             <i class="ti ti-alert-triangle me-1"></i>

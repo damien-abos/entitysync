@@ -43,14 +43,15 @@ touched, except when the plugin proposes to adopt one (see below).
 
 1. Open the model in *Administration > Entity import*.
 2. Go to the **Import** tab. The right-hand side reminds the expected structure of
-   the file (levels and columns).
+   the file (levels and columns). Imports of the model that are waiting, running, or
+   that you previewed without applying them are listed at the top.
 3. Choose the CSV file and click **Preview changes**.
 
 ![Import tab](../images/en/import-tab.png)
 
 The file must have a header row with the column names expected by the model. If a
-column is missing or the file cannot be read, an error page lists the problems; fix
-the file (or ask the model administrator) and upload it again.
+column is missing or the file cannot be read, the page that opens lists the problems;
+fix the file (or ask the model administrator) and upload it again.
 
 > You need the *Apply an import* right on the plugin, the matching rights on
 > entities, and a recursive access to the target root entity. Without them, the Import
@@ -64,7 +65,8 @@ the file (or ask the model administrator) and upload it again.
 by the model's filter, the rows in error, and the number of entities the file
 describes.
 
-**Data issues.** Problems found in the file, with their line numbers:
+**Data issues.** Problems found in the file, with their line numbers (the first 200
+are listed, the total is always shown):
 
 | Kind | Meaning | Effect |
 |---|---|---|
@@ -85,31 +87,58 @@ For example, an entity that still contains computers, tickets or users cannot be
 deleted, nor an entity that has sub-entities not proposed for deletion; a creation is
 blocked if its name is already used by another entity under the same parent.
 
+**Large files.** Each section is shown page by page, with its own pager at the bottom
+of the section and the number of changes it holds. *Per page* sets the page size (50,
+100 or 500; your choice is remembered by your browser). Long pages scroll inside the
+section.
+
+![Preview of a large file](../images/en/preview-volume.png)
+
 ## Selecting and applying changes
 
 - Check or uncheck changes one by one, by section (checkbox in the section header),
   or with **Select all** / **Select none**.
-- The search field filters the list by entity path; *Select all* and *Select none*
-  apply to the visible rows only.
+- The search field filters every section by entity path. **Select all**, **Select
+  none** and the section checkboxes apply to **every change matching the search, on
+  every page**, not only to the page shown. A section checkbox is partly checked when
+  only some of its changes are selected.
 - **Dependencies are handled for you.** Selecting the creation of
   `ACME > Paris > Migration` also selects the creation of `ACME` and `ACME > Paris`
-  if they are new. Unselecting `ACME` unselects everything that needs it. Deleting an
-  entity selects the deletion of its managed sub-entities. The counter at the top
-  shows how many changes are selected, including how many deletions.
+  if they are new, even on other pages. Unselecting `ACME` unselects everything that
+  needs it. Deleting an entity selects the deletion of its managed sub-entities. The
+  counter of the toolbar shows how many changes are selected, including how many
+  deletions.
+- Your selection is saved as you go: you can leave the preview and come back to it
+  from the Import tab (a preview that is not applied is removed after 24 hours).
 - Click **Apply selected changes**. When deletions are selected, a confirmation is
-  asked first.
-- **Cancel** drops the uploaded file without changing anything.
+  asked first. **Cancel** drops the uploaded file without changing anything.
 
-The plugin recomputes the changes when you apply them. If someone changed GLPI in
-the meantime, the result reflects the current state, and the summary message tells
-you if some selected changes no longer applied.
+The changes are then applied **in the background**, by batches, by a GLPI automatic
+action, and a progress page opens:
+
+![Progress of an import](../images/en/job-status.png)
+
+- The page refreshes by itself: status, progress bar and counters.
+- **Stop the import** cancels an import that has not started yet, or stops a running
+  one at the end of its current batch; the changes already applied are kept.
+- You can leave the page: the import goes on. It is listed in the Import tab of the
+  model while it runs.
+- If a warning says that the background task has not run, GLPI's automatic actions
+  are not launched by the server: contact your GLPI administrator (see the
+  installation guide).
+- Only one import of a model can wait or run at a time.
+
+The plugin recomputes the changes from the current state of GLPI each time the
+background task runs. If someone changed GLPI in the meantime, the result reflects
+the current state; selected changes that no longer apply are reported as skipped.
 
 ## After the import
 
-A message summarizes what was done. The **Import runs** tab keeps the history of the
-last 50 imports of the model: date, user, file, counters, and the result of every
-operation (done, failed with the reason, or skipped because an operation it depended
-on was not applied).
+When the import ends, **Show the result** opens the **Import runs** tab, which keeps
+the history of the last 50 imports of the model: date, user, file, counters, and the
+result of every operation (done, failed with the reason, or skipped because an
+operation it depended on was not applied). For large imports, the first 500 results
+are listed, failures first. An import stopped before the end is marked as such.
 
 ![Import history](../images/en/history.png)
 

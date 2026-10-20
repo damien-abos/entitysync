@@ -241,6 +241,11 @@ class Model extends CommonDBTM
 
         $DB->delete(Link::getTable(), ['plugin_entitysync_models_id' => $this->getID()]);
         $DB->delete(Run::getTable(), ['plugin_entitysync_models_id' => $this->getID()]);
+
+        $job = new Job();
+        foreach ($DB->request(['SELECT' => ['id'], 'FROM' => Job::getTable(), 'WHERE' => ['plugin_entitysync_models_id' => $this->getID()]]) as $row) {
+            $job->delete(['id' => $row['id']], true);
+        }
     }
 
     public function rawSearchOptions()
@@ -379,6 +384,7 @@ class Model extends CommonDBTM
             'levels'        => $this->toEngineConfig()->levels,
             'has_recursive' => Session::haveRecursiveAccessToEntity($this->getTargetEntityId()),
             'max_upload'    => \Toolbox::getSize(\Toolbox::return_bytes_from_ini_vars(ini_get('upload_max_filesize'))),
+            'jobs'          => Job::listOpenForModel($this->getID()),
         ]);
     }
 

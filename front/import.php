@@ -17,17 +17,17 @@ if (isset($_POST['preview'])) {
     Html::redirect($controller->upload($_POST, $_FILES));
 }
 
-if (isset($_POST['apply'])) {
-    Html::redirect($controller->apply($_POST));
+if (isset($_POST['queue'])) {
+    Html::redirect($controller->queue((int) ($_POST['job'] ?? 0)));
 }
 
 if (isset($_POST['cancel'])) {
-    Html::redirect($controller->cancel((string) ($_POST['token'] ?? '')));
+    Html::redirect($controller->cancel((int) ($_POST['job'] ?? 0)));
 }
 
-if (isset($_GET['token'])) {
+if (isset($_GET['job'])) {
     Html::header(__('Entity import', 'entitysync'), '', 'admin', Model::class);
-    $controller->preview((string) $_GET['token']);
+    $controller->show((int) $_GET['job']);
     Html::footer();
     return;
 }

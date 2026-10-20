@@ -10,6 +10,7 @@ configuring import models. Running imports is described in the
 - [Installation](#installation)
 - [Upgrade](#upgrade)
 - [Uninstallation](#uninstallation)
+- [Background task (GLPI cron)](#background-task-glpi-cron)
 - [Server settings](#server-settings)
 - [Rights](#rights)
 - [Configuring an import model](#configuring-an-import-model)
@@ -24,6 +25,7 @@ configuring import models. Running imports is described in the
 | GLPI | 11.0.x (tested with 11.0.0 and 11.0.11) |
 | PHP | The versions supported by your GLPI release (8.2 or later), with the `mbstring` and `intl` extensions (already required by GLPI) |
 | Database | The one used by GLPI (MariaDB or MySQL) |
+| GLPI cron | **Run by the system** (crontab or systemd timer), see [background task](#background-task-glpi-cron): the imports are applied by a GLPI automatic action |
 
 ## Installation
 
@@ -51,8 +53,12 @@ configuring import models. Running imports is described in the
    sudo -u www-data php bin/console plugin:activate entitysync
    ```
 
-The installation creates three tables (`glpi_plugin_entitysync_models`, `_links`,
-`_runs`) and the plugin right. Profiles that can update the GLPI configuration
+4. Make sure GLPI's cron is run by the system (see
+   [background task](#background-task-glpi-cron)): without it, imports stay waiting.
+
+The installation creates four tables (`glpi_plugin_entitysync_models`, `_links`,
+`_runs`, `_jobs`), the plugin right, the automatic action `entitysyncApply` and the
+directory `files/_plugins/entitysync`. Profiles that can update the GLPI configuration
 (Super-Admin by default) receive all the plugin rights; the other profiles receive
 none.
 
@@ -72,11 +78,51 @@ The menu entry is *Administration > Entity import*.
 
 Models, managed entities and history are kept.
 
+**From 1.0.x to 1.1.0**: the update adds the `glpi_plugin_entitysync_jobs` table, a
+`status` column to the history and the automatic action `entitysyncApply`. Since
+1.1.0, imports are applied in the background: configure GLPI's cron (next section)
+before the first import.
+
 ## Uninstallation
 
 Uninstalling the plugin (*Setup > Plugins > Uninstall*) drops its tables and rights:
 models, links between models and entities, and the import history are lost. **The
 entities created by the plugin stay in GLPI** as ordinary entities.
+
+## Background task (GLPI cron)
+
+When a user applies a preview, the plugin queues an **import job**. The GLPI automatic
+action **`entitysyncApply`** applies the queued jobs by batches:
+
+- each execution lasts at most 50 seconds, then the job goes on at the next execution;
+- the progress is saved after each batch, so an interrupted execution resumes where it
+  stopped;
+- the plan is recomputed from the current state of GLPI at each execution;
+- the action also removes the previews that were not applied after 24 hours.
+
+GLPI 11 only launches automatic actions in *GLPI* mode when someone displays the login
+page, which is not enough for a background task. The action is therefore installed in
+**CLI** mode, and GLPI's cron must be run by the system every minute, as the web server
+user:
+
+```cron
+* * * * * www-data php /var/www/glpi/front/cron.php
+```
+
+(a systemd timer works too). Check the action in *Setup > Automatic actions >
+entitysyncApply*:
+
+| Field | Value |
+|---|---|
+| Status | Scheduled |
+| Run mode | CLI |
+| Run frequency | 1 minute (default) |
+| Number of operations per batch | 100 by default. A larger batch saves the progress less often; a smaller one gives a finer progress bar. |
+
+The *Execute* button of that page runs it once by hand. As an order of magnitude, one
+execution applied about 1,300 creations in 8 seconds on a test instance (measure,
+depends on the server). The progress page of an import shows a warning when the action
+has not run for 3 minutes after the import was queued.
 
 ## Server settings
 
@@ -84,8 +130,9 @@ entities created by the plugin stay in GLPI** as ordinary entities.
 |---|---|
 | `upload_max_filesize`, `post_max_size` (PHP) | Maximum size of the CSV file. The Import tab shows the current limit. |
 | `memory_limit` (PHP) | The whole file is loaded in memory. As an order of magnitude, the engine used about 110 MB for 50,000 rows in a test (estimate, depends on the number of columns). |
-| Web server timeouts | Applying an import writes entities one by one through GLPI (about 6 ms per entity measured on a test instance). The plugin lifts PHP's `max_execution_time` while applying, but not the timeouts of the web server or proxy (`fastcgi_read_timeout` for nginx, `Timeout`/`ProxyTimeout` for Apache, `request_terminate_timeout` for PHP-FPM). Raise them for imports of several thousand entities. |
-| `files/_tmp` (GLPI) | The uploaded file is kept there between the preview and the application. It must be writable by the web server (it already is for GLPI). |
+| Web server timeouts | Only the preview is computed in a web request (about 1.6 s for 1,200 rows measured on a test instance); the changes are applied by the background task, so imports are not limited by `fastcgi_read_timeout`, `request_terminate_timeout` and the like. |
+| `max_input_vars` (PHP) | No constraint since 1.1.0: the selection is sent by small AJAX calls, not as one form field per change. |
+| `files/_plugins/entitysync` (GLPI) | Uploaded files and preview snapshots of the jobs. Must be writable by the web server **and** by the user running the cron (the same user, normally). Files are removed when the job ends. |
 
 ## Rights
 
@@ -108,7 +155,8 @@ Applying an import also checks the user's rights on **entities**:
 
 and requires a **recursive** access to the target root entity of the model. The
 preview shows the operations the user is not allowed to apply as blocked, with the
-reason.
+reason. The background task has no user session: the rights of the user are checked
+when the import is queued, and kept with the job.
 
 ## Configuring an import model
 
@@ -261,8 +309,11 @@ so *No site* is created; line 6 has no project, so it stops at *Nantes*.
 | *Level "X": column "Y" does not exist in the file* | Column names are case sensitive and must match the header exactly. Check the delimiter if the whole header is read as one column. |
 | Accented characters are garbled | Set the encoding of the model explicitly (Windows-1252 for files saved by Excel on Windows, for example). |
 | *You need a recursive access to the target root entity* | Switch to the target entity (or a parent) with the *recursive* option in the entity selector, or grant the profile on that entity recursively. |
-| *This import has expired or was already applied* | The preview was already applied or cancelled, or the session expired. Upload the file again. |
+| *This import has expired* / *This import no longer exists* | The preview was cancelled, or removed after 24 hours without being applied. Upload the file again. |
+| The import stays *Waiting for the background task* | GLPI's cron is not run by the system, or the action `entitysyncApply` is disabled or in *GLPI* mode. See [background task](#background-task-glpi-cron); the *Execute* button of the action runs it once. |
+| *Another import of this model is waiting or running* | Only one import per model runs at a time. Wait for it to end (its progress page is linked), or stop it. |
+| A file of more than 1,000 changes cannot be applied (HTTP 400) | Version 1.0.x of the plugin: update to 1.1.0 or later. |
 | A deletion is blocked: *Still contains...* | The entity still holds items (computers, tickets, user authorizations...). Move or delete them, then import again. |
 | A row is in error: *the name "X" is already produced by another key* | Two different keys give the same name under the same parent, which GLPI forbids. Fix the source data, or change the name column or the rules. |
 | The entity is not adopted: *already managed by another import model* | Two models target the same entities. Each entity can be managed by one model only. |
-| The import stops with a timeout | See [server settings](#server-settings), or apply the changes in several passes: select part of them (the search field of the preview helps, for example one organisation), apply, then import the same file again for the rest. Do not split the file itself: rows absent from a file are proposed for deletion. |
+| The preview of a very large file takes too long | Raise the web server timeout and `memory_limit`, or apply the changes in several passes: select part of them (the search field helps, for example one organisation), apply, then import the same file again for the rest. Do not split the file itself: rows absent from a file are proposed for deletion. |

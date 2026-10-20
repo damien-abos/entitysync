@@ -583,105 +583,198 @@
     };
 
     // ---------------------------------------------------------------------------------
-    // Preview panel
+    // Preview panel: paginated sections, selection kept on the server
     // ---------------------------------------------------------------------------------
 
-    function initPreview(formId) {
-        var form = document.getElementById(formId);
-        if (!form || form.dataset.esReady) {
+    function csrfToken() {
+        if (typeof window.getAjaxCsrfToken === 'function') {
+            return window.getAjaxCsrfToken() || '';
+        }
+        var meta = document.querySelector('meta[property="glpi:csrf_token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    function format(template, first, second) {
+        return template.replace('%1$d', first).replace('%2$d', second).replace('%d', first);
+    }
+
+    function fetchJson(url, options) {
+        options = options || {};
+        options.credentials = 'same-origin';
+        options.headers = Object.assign({'X-Requested-With': 'XMLHttpRequest'}, options.headers || {});
+        return fetch(url, options).then(function (response) {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        });
+    }
+
+    var PAGE_SIZE_KEY = 'entitysync.pageSize';
+
+    function initPreview(config) {
+        var root = document.getElementById('es-preview');
+        if (!root || root.dataset.esReady) {
             return;
         }
-        form.dataset.esReady = '1';
+        root.dataset.esReady = '1';
 
-        var boxes = {};
-        var dependents = {};
-        Array.prototype.forEach.call(form.querySelectorAll('[data-es-op]'), function (box) {
-            boxes[box.dataset.esOp] = box;
-        });
-        Object.keys(boxes).forEach(function (id) {
-            var requires = JSON.parse(boxes[id].dataset.esRequires || '[]');
-            boxes[id].esRequires = requires;
-            requires.forEach(function (required) {
-                (dependents[required] = dependents[required] || []).push(id);
-            });
-        });
+        var L = config.labels;
+        var counter = root.querySelector('[data-es-counter]');
+        var applyButton = root.querySelector('[data-es-apply]');
+        var locked = applyButton ? applyButton.disabled : true;
+        var state = {q: '', size: 100, summary: null};
+        var pending = Promise.resolve();
 
-        function setChecked(id, checked, visited) {
-            var box = boxes[id];
-            if (!box || box.disabled || visited[id]) {
-                return;
+        try {
+            var saved = parseInt(window.localStorage.getItem(PAGE_SIZE_KEY), 10);
+            if (config.pageSizes.indexOf(saved) >= 0) {
+                state.size = saved;
             }
-            visited[id] = true;
-            box.checked = checked;
-            if (checked) {
-                // A selected operation needs the operations it depends on.
-                box.esRequires.forEach(function (required) { setChecked(required, true, visited); });
-            } else {
-                // An unselected operation cannot be the prerequisite of a selected one.
-                (dependents[id] || []).forEach(function (dependent) { setChecked(dependent, false, visited); });
+        } catch (e) {
+            // Storage unavailable: keep the default page size.
+        }
+        var sizeSelect = root.querySelector('[data-es-page-size]');
+        if (sizeSelect) {
+            sizeSelect.value = String(state.size);
+        }
+
+        var sections = {};
+        Array.prototype.forEach.call(root.querySelectorAll('[data-es-section]'), function (el) {
+            sections[el.dataset.esSection] = {el: el, page: 1, pages: 1, ids: []};
+        });
+
+        function showError() {
+            if (counter) {
+                counter.textContent = L.error;
+                counter.classList.add('text-danger');
             }
         }
 
-        function visibleBoxes(scope) {
-            return Array.prototype.filter.call((scope || form).querySelectorAll('[data-es-op]'), function (box) {
-                return !box.disabled && box.closest('[data-es-row]').style.display !== 'none';
+        function visibleIds() {
+            var ids = [];
+            Object.keys(sections).forEach(function (type) {
+                ids = ids.concat(sections[type].ids);
             });
+            return ids;
         }
 
-        var counter = form.querySelector('[data-es-counter]');
-        function refresh() {
-            var selected = 0;
-            var deletions = 0;
-            Object.keys(boxes).forEach(function (id) {
-                if (boxes[id].checked) {
-                    selected++;
-                    if (boxes[id].dataset.esType === 'delete') {
-                        deletions++;
-                    }
-                }
+        function applySummary(data) {
+            state.summary = data.summary;
+            var selected = {};
+            data.visible_selected.forEach(function (id) { selected[id] = true; });
+            Array.prototype.forEach.call(root.querySelectorAll('[data-es-op]'), function (box) {
+                box.checked = !!selected[box.dataset.esOp];
             });
             if (counter) {
-                counter.textContent = counter.dataset.template.replace('%1$d', selected).replace('%2$d', deletions);
+                counter.classList.remove('text-danger');
+                counter.textContent = format(L.counter, data.summary.selected, data.summary.deletions);
             }
-            Array.prototype.forEach.call(form.querySelectorAll('[data-es-section-toggle]'), function (toggle) {
-                var section = form.querySelector('[data-es-section="' + toggle.dataset.esSectionToggle + '"]');
-                var enabled = Array.prototype.filter.call(section.querySelectorAll('[data-es-op]'), function (b) { return !b.disabled; });
-                var checked = enabled.filter(function (b) { return b.checked; });
-                toggle.disabled = enabled.length === 0;
-                toggle.checked = enabled.length > 0 && checked.length === enabled.length;
-                toggle.indeterminate = checked.length > 0 && checked.length < enabled.length;
+            Object.keys(sections).forEach(function (type) {
+                var counts = data.summary.sections[type];
+                var toggle = sections[type].el.querySelector('[data-es-section-toggle]');
+                if (!toggle || !counts) {
+                    return;
+                }
+                toggle.checked = counts.selectable > 0 && counts.selected === counts.selectable;
+                toggle.indeterminate = counts.selected > 0 && counts.selected < counts.selectable;
+                if (!config.readOnly) {
+                    toggle.disabled = counts.selectable === 0;
+                }
             });
-            return {selected: selected, deletions: deletions};
+            if (applyButton && !locked) {
+                applyButton.disabled = data.summary.selected === 0;
+            }
         }
 
-        form.addEventListener('change', function (event) {
+        // Selection changes are sent one after the other, so that the server state and
+        // the checkboxes never diverge.
+        function send(payload) {
+            pending = pending.then(function () {
+                payload.job = config.job;
+                payload.q = state.q;
+                payload.visible = visibleIds();
+                return fetchJson(config.selectionUrl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': csrfToken()},
+                    body: JSON.stringify(payload)
+                }).then(applySummary);
+            }).catch(showError);
+            return pending;
+        }
+
+        function renderPager(section, data) {
+            var el = section.el;
+            el.querySelector('[data-es-page-label]').textContent = format(L.page, data.page, data.pages);
+            el.querySelector('[data-es-items-label]').textContent = format(L.items, data.total);
+            Array.prototype.forEach.call(el.querySelectorAll('[data-es-page]'), function (button) {
+                var action = button.dataset.esPage;
+                button.disabled = (action === 'first' || action === 'prev') ? data.page <= 1 : data.page >= data.pages;
+                button.classList.toggle('d-none', data.pages <= 1);
+            });
+        }
+
+        function loadSection(type) {
+            var section = sections[type];
+            var params = new URLSearchParams({job: config.job, type: type, page: section.page, size: state.size, q: state.q});
+            return fetchJson(config.pageUrl + '?' + params.toString()).then(function (data) {
+                section.page = data.page;
+                section.pages = data.pages;
+                section.ids = data.ids;
+                section.el.querySelector('[data-es-rows]').innerHTML = data.html;
+                renderPager(section, data);
+            });
+        }
+
+        function loadAll() {
+            Object.keys(sections).forEach(function (type) { sections[type].page = 1; });
+            return Promise.all(Object.keys(sections).map(loadSection))
+                .then(function () { return send({action: 'summary'}); })
+                .catch(showError);
+        }
+
+        root.addEventListener('change', function (event) {
             var target = event.target;
             if (target.dataset.esOp) {
-                setChecked(target.dataset.esOp, target.checked, {});
+                send({action: target.checked ? 'select' : 'deselect', ids: [target.dataset.esOp]});
             } else if (target.dataset.esSectionToggle) {
-                var section = form.querySelector('[data-es-section="' + target.dataset.esSectionToggle + '"]');
-                visibleBoxes(section).forEach(function (box) { setChecked(box.dataset.esOp, target.checked, {}); });
+                send({action: target.checked ? 'select_matching' : 'deselect_matching', type: target.dataset.esSectionToggle});
+            } else if (target.hasAttribute('data-es-page-size')) {
+                state.size = parseInt(target.value, 10);
+                try {
+                    window.localStorage.setItem(PAGE_SIZE_KEY, String(state.size));
+                } catch (e) {
+                    // Not remembered: fine.
+                }
+                loadAll();
             }
-            refresh();
         });
 
-        Array.prototype.forEach.call(form.querySelectorAll('[data-es-select]'), function (button) {
-            button.addEventListener('click', function () {
-                var checked = button.dataset.esSelect === 'all';
-                visibleBoxes().forEach(function (box) { setChecked(box.dataset.esOp, checked, {}); });
-                refresh();
-            });
+        root.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-es-page], [data-es-select]');
+            if (!button) {
+                return;
+            }
+            if (button.dataset.esSelect) {
+                send({action: button.dataset.esSelect === 'all' ? 'select_matching' : 'deselect_matching'});
+                return;
+            }
+            var section = sections[button.closest('[data-es-section]').dataset.esSection];
+            var pages = {first: 1, prev: section.page - 1, next: section.page + 1, last: section.pages};
+            section.page = Math.min(Math.max(1, pages[button.dataset.esPage]), section.pages);
+            loadSection(section.el.dataset.esSection).catch(showError);
         });
 
-        var search = form.querySelector('[data-es-search]');
+        var search = root.querySelector('[data-es-search]');
+        var searchTimer = null;
         if (search) {
             search.addEventListener('input', function () {
-                var term = search.value.trim().toLowerCase();
-                Array.prototype.forEach.call(form.querySelectorAll('[data-es-row]'), function (row) {
-                    row.style.display = term === '' || row.dataset.path.indexOf(term) >= 0 ? '' : 'none';
-                });
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(function () {
+                    state.q = search.value.trim();
+                    loadAll();
+                }, 300);
             });
-            // Enter in the search field must not submit the form.
             search.addEventListener('keydown', function (event) {
                 if (event.key === 'Enter') {
                     event.preventDefault();
@@ -689,21 +782,70 @@
             });
         }
 
-        var apply = form.querySelector('[data-es-apply]');
-        if (apply) {
-            apply.addEventListener('click', function (event) {
-                var state = refresh();
-                if (state.selected === 0) {
+        if (applyButton) {
+            applyButton.addEventListener('click', function (event) {
+                var summary = state.summary;
+                if (!summary || summary.selected === 0) {
                     event.preventDefault();
                     return;
                 }
-                if (state.deletions > 0 && !window.confirm(apply.dataset.confirmDelete.replace('%d', state.deletions))) {
+                if (summary.deletions > 0 && !window.confirm(format(L.confirm, summary.deletions))) {
                     event.preventDefault();
                 }
             });
         }
 
-        refresh();
+        loadAll();
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Job progress page
+    // ---------------------------------------------------------------------------------
+
+    function initJobStatus(id) {
+        var root = document.getElementById(id);
+        if (!root || root.dataset.esReady || root.dataset.esActive !== '1') {
+            return;
+        }
+        root.dataset.esReady = '1';
+        var initialStatus = null;
+
+        function poll() {
+            fetchJson(root.dataset.esStatusUrl).then(function (data) {
+                if (initialStatus === null) {
+                    initialStatus = data.status;
+                }
+                if (data.status !== initialStatus || !data.active) {
+                    window.location.reload();
+                    return;
+                }
+                var bar = root.querySelector('[data-es-job-bar]');
+                if (bar) {
+                    bar.style.width = data.percent + '%';
+                    bar.textContent = data.percent + ' %';
+                    bar.setAttribute('aria-valuenow', data.percent);
+                }
+                var label = root.querySelector('[data-es-job-progress-label]');
+                if (label && label.dataset.template) {
+                    label.textContent = format(label.dataset.template, data.processed, data.total);
+                }
+                Object.keys(data.counts).forEach(function (key) {
+                    var el = root.querySelector('[data-es-job-count="' + key + '"]');
+                    if (el) {
+                        el.textContent = data.counts[key];
+                    }
+                });
+                var warning = root.querySelector('[data-es-job-cron-warning]');
+                if (warning) {
+                    warning.classList.toggle('d-none', !data.cron.late);
+                }
+                window.setTimeout(poll, 3000);
+            }).catch(function () {
+                window.setTimeout(poll, 10000);
+            });
+        }
+
+        window.setTimeout(poll, 3000);
     }
 
     // ---------------------------------------------------------------------------------
@@ -732,6 +874,7 @@
                 options.readOnly
             );
         },
-        initPreview: initPreview
+        initPreview: initPreview,
+        initJobStatus: initJobStatus
     };
 })();

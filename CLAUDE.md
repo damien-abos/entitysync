@@ -7,8 +7,9 @@ Context for Claude Code working on this repository.
 GLPI 11 plugin `entitysync`: synchronizes the GLPI entity tree below a target entity
 from a CSV file. An import model defines levels (key columns, name column, regex
 replacement rules, comment columns, placeholder name for empty values) and an
-AND / OR / NOT filter on rows. An upload produces a preview (additions, links,
-updates, deletions) where the user selects what to apply. Full behaviour:
+AND / OR / NOT filter on rows. An upload creates an import job with a paginated
+preview (additions, links, updates, deletions) where the user selects what to apply;
+the job is then applied by batches by the GLPI automatic action `entitysyncApply`. Full behaviour:
 `docs/en/user-guide.md`, `docs/en/installation.md`; architecture and GLPI notes:
 `docs/developer.md` (read it before non-trivial changes).
 
@@ -25,7 +26,8 @@ make glpi-install   # (re)install GLPI and the plugin; needed after install/sche
 
 Dev container: GLPI in `/opt/glpi`, served on http://localhost:8080 (glpi / glpi),
 GLPI console `php /opt/glpi/bin/console`, logs in `/opt/glpi/files/_log`
-(`php-errors.log` must stay clean). The repository is linked as
+(`php-errors.log` must stay clean). GLPI's cron runs every minute; to apply a queued
+job at once: `php /opt/glpi/front/cron.php --force entitysyncApply`. The repository is linked as
 `/opt/glpi/plugins/entitysync`, so PHP/Twig/JS changes apply immediately.
 
 There is no Composer dependency: the unit tests use the small runner in
@@ -37,7 +39,10 @@ There is no Composer dependency: the unit tests use the small runner in
   GLPI classes or functions.** All GLPI access goes through `src/GlpiGateway.php`
   (implements `Engine\Sync\GatewayInterface`).
 - `src/Model.php` (model item, form, tabs, JS labels), `src/ImportController.php`
-  (upload → preview → apply), `src/Link.php`, `src/Run.php`, `src/ProfileRights.php`.
+  (upload → preview → queue → status, AJAX handlers), `src/Job.php` (job + automatic
+  action), `src/JobRunner.php` (batches), `src/JobStorage.php`, `src/PlanFactory.php`,
+  `src/Link.php`, `src/Run.php`, `src/ProfileRights.php`.
+- `ajax/` JSON endpoints (preview pages, selection, job status).
 - `setup.php` (version, hooks), `hook.php` (install/uninstall, schema).
 - `front/` controllers, `templates/` Twig (`@entitysync/...`), `public/` JS/CSS.
 - `tests/Engine/` unit tests, `tests/e2e/` end-to-end scenario and fixtures.
@@ -51,12 +56,17 @@ There is no Composer dependency: the unit tests use the small runner in
   an entity of a row in error (protected paths).
 - Deletions are never selected by default; a deletion is blocked while the entity has
   items (any `entities_id` table) or unmanaged children.
-- Nothing is written to GLPI before the user applies a selection; the plan is
-  recomputed at apply time (never trust stored plans or client-side ids blindly).
+- Nothing is written to GLPI before the user queues a selection; the preview snapshot
+  is for display only, the runner recomputes the plan at each execution and matches
+  the selected ids (stable: hash of type + key path) against it.
+- Never post one form field per operation (PHP `max_input_vars`): the selection lives
+  in the job and changes through `ajax/selection.php` (JSON body).
+- The background task has no user session: rights are checked when queuing and stored
+  in the job (`forbidden`); progress is saved after each batch so a run can resume.
 - Writes go through `Entity::add/update/delete` (not raw SQL) so GLPI rules, history
   and caches apply. Entity rights and recursive access to the target root are enforced.
-- Selection dependencies are the same on the client (`public/entitysync.js`) and on the
-  server (`Plan::expandSelection()`).
+- Selection dependencies are computed on the server only (`Engine\Sync\Selection`,
+  `Plan::expandSelection()`); the JavaScript displays what the server answers.
 
 ## Conventions
 
@@ -81,6 +91,10 @@ There is no Composer dependency: the unit tests use the small runner in
   `front/model.form.php` sets the active tab explicitly.
 - Methods declared `bool` must cast `Session::haveRight()` (it returns an int).
 - `glpi_entities` has `UNIQUE (entities_id, name)`, case and accent insensitive.
+- Automatic actions in GLPI (internal) mode only run from the login page in GLPI 11:
+  the task is registered in CLI mode and needs the system cron.
+- `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET` (in GLPI's `config/local_define.php`) shortens
+  each execution of the task; the e2e uses it to test resumption.
 - GLPI queues user messages in the session; `GlpiGateway::guard()` captures them.
 
 ## Release

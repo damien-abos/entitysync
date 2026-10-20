@@ -46,13 +46,14 @@ confirmez.
 
 1. Ouvrez le modèle dans *Administration > Import d'entités*.
 2. Allez dans l'onglet **Import**. La partie droite rappelle la structure attendue du
-   fichier (niveaux et colonnes).
+   fichier (niveaux et colonnes). Les imports du modèle en attente, en cours, ou que
+   vous avez prévisualisés sans les appliquer sont listés en haut.
 3. Choisissez le fichier CSV et cliquez sur **Prévisualiser les modifications**.
 
 ![Onglet Import](../images/fr/import-tab.png)
 
 Le fichier doit avoir une ligne d'en-tête avec les noms de colonnes attendus par le
-modèle. Si une colonne manque ou si le fichier est illisible, une page d'erreur liste
+modèle. Si une colonne manque ou si le fichier est illisible, la page qui s'ouvre liste
 les problèmes ; corrigez le fichier (ou demandez à l'administrateur du modèle) et
 renvoyez-le.
 
@@ -69,7 +70,7 @@ renvoyez-le.
 par le fichier.
 
 **Anomalies dans les données.** Problèmes détectés dans le fichier, avec leur numéro de
-ligne :
+ligne (les 200 premières sont listées, le total est toujours affiché) :
 
 | Type | Signification | Effet |
 |---|---|---|
@@ -91,31 +92,63 @@ tickets ou des utilisateurs ne peut pas être supprimée, pas plus qu'une entit�
 sous-entités non proposées à la suppression ; une création est bloquée si son nom est
 déjà utilisé par une autre entité sous le même parent.
 
+**Fichiers volumineux.** Chaque section s'affiche page par page, avec sa propre
+pagination en bas de section et le nombre de modifications qu'elle contient. *Par page*
+règle la taille des pages (50, 100 ou 500 ; votre choix est mémorisé par votre
+navigateur). Les pages longues défilent à l'intérieur de la section.
+
+![Prévisualisation d'un fichier volumineux](../images/fr/preview-volume.png)
+
 ## Sélectionner et appliquer les modifications
 
 - Cochez ou décochez les modifications une par une, par section (case de l'en-tête de
   section), ou avec **Tout sélectionner** / **Tout désélectionner**.
-- Le champ de recherche filtre la liste par chemin d'entité ; *Tout sélectionner* et
-  *Tout désélectionner* ne portent que sur les lignes visibles.
+- Le champ de recherche filtre toutes les sections par chemin d'entité. **Tout
+  sélectionner**, **Tout désélectionner** et les cases de section portent sur **toutes
+  les modifications qui correspondent à la recherche, sur toutes les pages**, pas
+  seulement sur la page affichée. La case d'une section est partiellement cochée quand
+  seule une partie de ses modifications est sélectionnée.
 - **Les dépendances sont gérées pour vous.** Cocher la création de
   `ACME > Paris > Migration` coche aussi la création de `ACME` et de `ACME > Paris` si
-  elles sont nouvelles. Décocher `ACME` décoche tout ce qui en dépend. Supprimer une
-  entité coche la suppression de ses sous-entités gérées. Le compteur en haut indique
-  le nombre de modifications sélectionnées, dont le nombre de suppressions.
+  elles sont nouvelles, même sur d'autres pages. Décocher `ACME` décoche tout ce qui en
+  dépend. Supprimer une entité coche la suppression de ses sous-entités gérées. Le
+  compteur de la barre d'outils indique le nombre de modifications sélectionnées, dont
+  le nombre de suppressions.
+- Votre sélection est enregistrée au fur et à mesure : vous pouvez quitter la
+  prévisualisation et y revenir depuis l'onglet Import (une prévisualisation non
+  appliquée est supprimée au bout de 24 heures).
 - Cliquez sur **Appliquer les modifications sélectionnées**. Si des suppressions sont
-  sélectionnées, une confirmation est demandée.
-- **Annuler** abandonne le fichier envoyé sans rien modifier.
+  sélectionnées, une confirmation est demandée. **Annuler** abandonne le fichier
+  envoyé sans rien modifier.
 
-Le plugin recalcule les modifications au moment de les appliquer. Si quelqu'un a
-modifié GLPI entre-temps, le résultat tient compte de l'état actuel, et le message de
-synthèse signale les modifications sélectionnées qui ne s'appliquaient plus.
+Les modifications sont alors appliquées **en arrière-plan**, par lots, par une action
+automatique de GLPI, et une page de suivi s'ouvre :
+
+![Suivi d'un import](../images/fr/job-status.png)
+
+- La page se met à jour toute seule : état, barre de progression et compteurs.
+- **Arrêter l'import** annule un import qui n'a pas encore commencé, ou arrête un import
+  en cours à la fin du lot en cours ; les modifications déjà appliquées sont conservées.
+- Vous pouvez quitter la page : l'import continue. Il reste listé dans l'onglet Import
+  du modèle tant qu'il tourne.
+- Si un avertissement indique que la tâche de fond n'a pas tourné, les actions
+  automatiques de GLPI ne sont pas lancées par le serveur : contactez votre
+  administrateur GLPI (voir le guide d'installation).
+- Un seul import d'un même modèle peut être en attente ou en cours à la fois.
+
+Le plugin recalcule les modifications à partir de l'état actuel de GLPI à chaque
+passage de la tâche de fond. Si quelqu'un a modifié GLPI entre-temps, le résultat en
+tient compte ; les modifications sélectionnées qui ne s'appliquent plus sont signalées
+comme ignorées.
 
 ## Après l'import
 
-Un message résume ce qui a été fait. L'onglet **Exécutions d'import** conserve
-l'historique des 50 derniers imports du modèle : date, utilisateur, fichier, compteurs
-et résultat de chaque opération (faite, en échec avec la raison, ou ignorée parce
-qu'une opération dont elle dépendait n'a pas été appliquée).
+À la fin de l'import, **Voir le résultat** ouvre l'onglet **Exécutions d'import**, qui
+conserve l'historique des 50 derniers imports du modèle : date, utilisateur, fichier,
+compteurs et résultat de chaque opération (faite, en échec avec la raison, ou ignorée
+parce qu'une opération dont elle dépendait n'a pas été appliquée). Pour les gros
+imports, les 500 premiers résultats sont listés, échecs en premier. Un import arrêté
+avant la fin est signalé comme tel.
 
 ![Historique des imports](../images/fr/history.png)
 

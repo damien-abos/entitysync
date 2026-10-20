@@ -5,7 +5,7 @@
 PLUGIN   := entitysync
 VERSION  := $(shell sed -n "s/^define('PLUGIN_ENTITYSYNC_VERSION', '\(.*\)');/\1/p" setup.php)
 LANGS    := $(basename $(notdir $(wildcard locales/*.po)))
-PHP_SRC  := $(shell find setup.php hook.php front src tests tools -name '*.php')
+PHP_SRC  := $(shell find setup.php hook.php front ajax src tests tools -name '*.php')
 
 .DEFAULT_GOAL := help
 .PHONY: help lint test e2e check locales locales-mo locales-check package glpi-install clean version

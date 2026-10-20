@@ -12,7 +12,6 @@ namespace GlpiPlugin\Entitysync;
 
 use CommonDBTM;
 use Glpi\Application\View\TemplateRenderer;
-use Session;
 use User;
 
 /**
@@ -24,6 +23,9 @@ class Run extends CommonDBTM
 
     /** Number of runs listed in the model tab. */
     private const HISTORY_LIMIT = 50;
+
+    /** Number of operation results displayed per run (failures first). */
+    private const DETAILS_LIMIT = 500;
 
     public static function getTypeName($nb = 0)
     {
@@ -44,13 +46,15 @@ class Run extends CommonDBTM
      * Records an applied import.
      *
      * @param array{results: list<array<string, mixed>>, counts: array<string, int>} $report
+     * @param string $status Final status of the job (done, cancelled, failed).
      */
-    public static function record(Model $model, string $filename, int $rows, int $selected, array $report): int
+    public static function record(Model $model, string $filename, int $rows, int $selected, array $report, int $userId, string $status = 'done'): int
     {
         $run = new self();
         $id = $run->add([
             'plugin_entitysync_models_id' => $model->getID(),
-            'users_id'                    => Session::getLoginUserID(),
+            'users_id'                    => $userId,
+            'status'                      => $status,
             'date'                        => $_SESSION['glpi_currenttime'],
             'filename'                    => mb_substr($filename, 0, 255),
             'nb_rows'                     => $rows,
@@ -82,17 +86,22 @@ class Run extends CommonDBTM
         $runs = [];
         foreach ($iterator as $row) {
             $details = json_decode((string) ($row['details'] ?? '[]'), true);
+            $details = is_array($details) ? $details : [];
+            // Failures and skipped operations first, then the others, up to the limit.
+            usort($details, static fn (array $a, array $b): int => ((($a['status'] ?? '') === 'done') <=> (($b['status'] ?? '') === 'done')));
             $runs[] = $row + [
-                'user_name'    => getUserName((int) $row['users_id']),
-                'details_list' => is_array($details) ? $details : [],
+                'user_name'     => getUserName((int) $row['users_id']),
+                'details_list'  => array_slice($details, 0, self::DETAILS_LIMIT),
+                'details_total' => count($details),
             ];
         }
 
         TemplateRenderer::getInstance()->display('@entitysync/history.html.twig', [
-            'runs'      => $runs,
-            'highlight' => (int) ($_GET['run'] ?? 0),
-            'limit'     => self::HISTORY_LIMIT,
-            'user_url'  => User::getFormURL(),
+            'runs'          => $runs,
+            'highlight'     => (int) ($_GET['run'] ?? 0),
+            'limit'         => self::HISTORY_LIMIT,
+            'details_limit' => self::DETAILS_LIMIT,
+            'user_url'      => User::getFormURL(),
         ]);
     }
 }
