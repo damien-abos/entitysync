@@ -13,7 +13,7 @@ use GlpiPlugin\Entitysync\Engine\Util\Msg;
 use GlpiPlugin\Entitysync\Model;
 use GlpiPlugin\Entitysync\ProfileRights;
 
-define('PLUGIN_ENTITYSYNC_VERSION', '1.0.0');
+define('PLUGIN_ENTITYSYNC_VERSION', '0.0.1');
 
 // Minimal GLPI version, inclusive.
 define('PLUGIN_ENTITYSYNC_MIN_GLPI', '11.0.0');

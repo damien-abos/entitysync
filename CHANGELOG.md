@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0
+## 0.0.1
 
 - First release for GLPI 11.0.x.
 - Import models with target root entity, CSV options, levels (composite keys, name
