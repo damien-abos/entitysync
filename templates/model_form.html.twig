@@ -8,6 +8,21 @@
 {% block form_fields %}
     {% set rand = random() %}
 
+    {% if export_url %}
+        <div class="col-12 mb-3 d-flex flex-wrap justify-content-end gap-2">
+            <a class="btn btn-sm btn-ghost-secondary" href="{{ export_url }}">
+                <i class="ti ti-file-export"></i>
+                <span>{{ __('Export the configuration', 'entitysync') }}</span>
+            </a>
+            {% if replace_url %}
+                <a class="btn btn-sm btn-ghost-secondary" href="{{ replace_url }}">
+                    <i class="ti ti-file-arrow-left"></i>
+                    <span>{{ __('Replace from a file', 'entitysync') }}</span>
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+
     {{ fields.textField('name', item.fields['name'], __('Name'), {'required': true}) }}
 
     {{ fields.dropdownField('Entity', 'entities_id_target', item.fields['entities_id_target'] ?? 0, __('Target root entity', 'entitysync'), {

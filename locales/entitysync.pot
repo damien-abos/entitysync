@@ -12,6 +12,10 @@ msgstr ""
 msgid "Entity import"
 msgstr ""
 
+#: front/model.transfer.php:26 src/Model.php:61 templates/model_import.html.twig:10
+msgid "Import a model configuration"
+msgstr ""
+
 #: src/Engine/Config/LevelConfig.php:127
 #, php-format
 msgid "Level \"%s\": at least one key column is required."
@@ -34,6 +38,42 @@ msgstr ""
 
 #: src/Engine/Config/ModelConfig.php:74
 msgid "At least one level is required."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:104
+msgid "The file is not valid JSON."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:107
+msgid "The file is not an import model export."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:111
+#, php-format
+msgid "Unsupported version of the export format: %s."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:124
+#, php-format
+msgid "Invalid CSV delimiter \"%s\"."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:128
+#, php-format
+msgid "Invalid CSV text delimiter \"%s\"."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:132
+#, php-format
+msgid "Unsupported CSV encoding \"%s\"."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:137
+msgid "The levels must be a list."
+msgstr ""
+
+#: src/Engine/Config/ModelExport.php:144
+msgid "The filter must be an object."
 msgstr ""
 
 #: src/Engine/Csv/CsvReader.php:46
@@ -242,7 +282,7 @@ msgstr ""
 msgid "You are not allowed to delete entities."
 msgstr ""
 
-#: src/ImportController.php:69
+#: src/ImportController.php:69 src/ModelTransfer.php:138
 msgid "No file was received."
 msgstr ""
 
@@ -334,276 +374,276 @@ msgid_plural "Managed entities"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/Model.php:64
+#: src/Model.php:77
 msgid "Apply an import"
 msgstr ""
 
-#: src/Model.php:87
+#: src/Model.php:100 templates/model_import.html.twig:76
 msgid "Import"
 msgstr ""
 
-#: src/Model.php:137 src/Model.php:141
+#: src/Model.php:150 src/Model.php:154
 msgid "Automatic"
 msgstr ""
 
-#: src/Model.php:142
+#: src/Model.php:155
 msgid "Semicolon (;)"
 msgstr ""
 
-#: src/Model.php:143
+#: src/Model.php:156
 msgid "Comma (,)"
 msgstr ""
 
-#: src/Model.php:144
+#: src/Model.php:157
 msgid "Tab"
 msgstr ""
 
-#: src/Model.php:145
+#: src/Model.php:158
 msgid "Pipe (|)"
 msgstr ""
 
-#: src/Model.php:185
+#: src/Model.php:202
 msgid "The name is mandatory."
 msgstr ""
 
-#: src/Model.php:193
+#: src/Model.php:210
 msgid "The levels configuration is not valid JSON."
 msgstr ""
 
-#: src/Model.php:204
+#: src/Model.php:221
 msgid "The filter configuration is not valid JSON."
 msgstr ""
 
-#: src/Model.php:268 templates/model_form.html.twig:13
+#: src/Model.php:285 templates/model_form.html.twig:28 templates/model_import.html.twig:55
 msgid "Target root entity"
 msgstr ""
 
-#: src/Model.php:372 src/Model.php:491
+#: src/Model.php:389 src/Model.php:508
 #, php-format
 msgid "No %s"
 msgstr ""
 
-#: src/Model.php:436
+#: src/Model.php:453
 msgid "Level"
 msgstr ""
 
-#: src/Model.php:437
+#: src/Model.php:454
 msgid "Level label"
 msgstr ""
 
-#: src/Model.php:438
+#: src/Model.php:455
 msgid "Add a level"
 msgstr ""
 
-#: src/Model.php:439 templates/job_status.html.twig:97
+#: src/Model.php:456 templates/job_status.html.twig:97
 msgid "Remove"
 msgstr ""
 
-#: src/Model.php:440
+#: src/Model.php:457
 msgid "Move up"
 msgstr ""
 
-#: src/Model.php:441
+#: src/Model.php:458
 msgid "Move down"
 msgstr ""
 
-#: src/Model.php:442
+#: src/Model.php:459
 msgid "Key columns"
 msgstr ""
 
-#: src/Model.php:443
+#: src/Model.php:460
 msgid "One or more columns identifying the entity at this level. An empty key mid-path creates the \"empty\" entity below."
 msgstr ""
 
-#: src/Model.php:444
+#: src/Model.php:461
 msgid "Name column"
 msgstr ""
 
-#: src/Model.php:445
+#: src/Model.php:462
 msgid "Leave empty to use the key columns."
 msgstr ""
 
-#: src/Model.php:446
+#: src/Model.php:463
 msgid "Name replacement rules"
 msgstr ""
 
-#: src/Model.php:447
+#: src/Model.php:464
 msgid "Applied in order. Regular expressions without delimiters; use $1, $2... in the replacement."
 msgstr ""
 
-#: src/Model.php:448
+#: src/Model.php:465
 msgid "Pattern"
 msgstr ""
 
-#: src/Model.php:449
+#: src/Model.php:466
 msgid "Replacement"
 msgstr ""
 
-#: src/Model.php:450
+#: src/Model.php:467
 msgid "Flags"
 msgstr ""
 
-#: src/Model.php:451
+#: src/Model.php:468
 msgid "Add a rule"
 msgstr ""
 
-#: src/Model.php:452
+#: src/Model.php:469
 msgid "Comment columns"
 msgstr ""
 
-#: src/Model.php:453
+#: src/Model.php:470
 msgid "Each column adds a \"Label: value\" line. Without columns, the comment of the entities is left untouched."
 msgstr ""
 
-#: src/Model.php:454
+#: src/Model.php:471
 msgid "Column"
 msgstr ""
 
-#: src/Model.php:455
+#: src/Model.php:472
 msgid "Label"
 msgstr ""
 
-#: src/Model.php:456
+#: src/Model.php:473
 msgid "Add a column"
 msgstr ""
 
-#: src/Model.php:457
+#: src/Model.php:474
 msgid "Skip empty values"
 msgstr ""
 
-#: src/Model.php:458
+#: src/Model.php:475
 msgid "Name when empty"
 msgstr ""
 
-#: src/Model.php:459
+#: src/Model.php:476
 msgid "Name of the entity created when this level is empty but a deeper level is filled. Default: \"No <level>\"."
 msgstr ""
 
-#: src/Model.php:460
+#: src/Model.php:477
 msgid "Add"
 msgstr ""
 
-#: src/Model.php:461
+#: src/Model.php:478
 msgid "Test"
 msgstr ""
 
-#: src/Model.php:462
+#: src/Model.php:479
 msgid "Sample value"
 msgstr ""
 
-#: src/Model.php:463
+#: src/Model.php:480
 msgid "Group"
 msgstr ""
 
-#: src/Model.php:464
+#: src/Model.php:481
 msgid "AND"
 msgstr ""
 
-#: src/Model.php:465
+#: src/Model.php:482
 msgid "OR"
 msgstr ""
 
-#: src/Model.php:466
+#: src/Model.php:483
 msgid "NOT"
 msgstr ""
 
-#: src/Model.php:467
+#: src/Model.php:484
 msgid "Add a condition"
 msgstr ""
 
-#: src/Model.php:468
+#: src/Model.php:485
 msgid "Add a group"
 msgstr ""
 
-#: src/Model.php:469
+#: src/Model.php:486
 msgid "Value(s)"
 msgstr ""
 
-#: src/Model.php:470
+#: src/Model.php:487
 msgid "One value per line. With several values, the condition matches if any value matches (or none, for negative operators)."
 msgstr ""
 
-#: src/Model.php:471
+#: src/Model.php:488
 msgid "Case sensitive"
 msgstr ""
 
-#: src/Model.php:472
+#: src/Model.php:489
 msgid "No condition: every row is imported."
 msgstr ""
 
-#: src/Model.php:473
+#: src/Model.php:490
 msgid "equals"
 msgstr ""
 
-#: src/Model.php:474
+#: src/Model.php:491
 msgid "is different from"
 msgstr ""
 
-#: src/Model.php:475
+#: src/Model.php:492
 msgid "is in the list"
 msgstr ""
 
-#: src/Model.php:476
+#: src/Model.php:493
 msgid "is not in the list"
 msgstr ""
 
-#: src/Model.php:477
+#: src/Model.php:494
 msgid "contains"
 msgstr ""
 
-#: src/Model.php:478
+#: src/Model.php:495
 msgid "does not contain"
 msgstr ""
 
-#: src/Model.php:479
+#: src/Model.php:496
 msgid "starts with"
 msgstr ""
 
-#: src/Model.php:480
+#: src/Model.php:497
 msgid "ends with"
 msgstr ""
 
-#: src/Model.php:481
+#: src/Model.php:498
 msgid "matches the regular expression"
 msgstr ""
 
-#: src/Model.php:482
+#: src/Model.php:499
 msgid "is greater than"
 msgstr ""
 
-#: src/Model.php:483
+#: src/Model.php:500
 msgid "is greater than or equal to"
 msgstr ""
 
-#: src/Model.php:484
+#: src/Model.php:501
 msgid "is less than"
 msgstr ""
 
-#: src/Model.php:485
+#: src/Model.php:502
 msgid "is less than or equal to"
 msgstr ""
 
-#: src/Model.php:486
+#: src/Model.php:503
 msgid "is empty"
 msgstr ""
 
-#: src/Model.php:487
+#: src/Model.php:504
 msgid "is not empty"
 msgstr ""
 
-#: src/Model.php:488
+#: src/Model.php:505
 msgid "No level yet: add the first level below the target root entity."
 msgstr ""
 
-#: src/Model.php:489
+#: src/Model.php:506
 msgid "Invalid regular expression"
 msgstr ""
 
-#: src/Model.php:490
+#: src/Model.php:507
 msgid "(no change)"
 msgstr ""
 
-#: src/Model.php:492
+#: src/Model.php:509
 msgid "Preview computed by your browser; the server uses PCRE, results may differ for advanced syntax."
 msgstr ""
 
@@ -612,6 +652,31 @@ msgid "Entity import model"
 msgid_plural "Entity import models"
 msgstr[0] ""
 msgstr[1] ""
+
+#: src/ModelTransfer.php:142
+msgid "The file is too large."
+msgstr ""
+
+#: src/ModelTransfer.php:150
+msgid "The file cannot be imported:"
+msgstr ""
+
+#: src/ModelTransfer.php:179
+msgid "The configuration of the model was replaced."
+msgstr ""
+
+#: src/ModelTransfer.php:189
+msgid "Select a target root entity you have access to."
+msgstr ""
+
+#: src/ModelTransfer.php:196
+msgid "Imported model"
+msgstr ""
+
+#: src/ModelTransfer.php:209
+#, php-format
+msgid "The exported model targeted \"%s\": check the target root entity."
+msgstr ""
 
 #: src/ProfileRights.php:73
 msgid "Applying an import also requires the create, update and delete rights on entities, and a recursive access to the target root entity."
@@ -717,11 +782,11 @@ msgstr ""
 msgid "Configure at least one level in the main tab before importing a file."
 msgstr ""
 
-#: templates/import_form.html.twig:47 templates/model_form.html.twig:20
+#: templates/import_form.html.twig:47 templates/model_form.html.twig:35
 msgid "CSV file"
 msgstr ""
 
-#: templates/import_form.html.twig:49
+#: templates/import_form.html.twig:49 templates/model_import.html.twig:29
 #, php-format
 msgid "Maximum size: %s"
 msgstr ""
@@ -826,31 +891,71 @@ msgid "Deleted entity (ID %d)"
 msgstr ""
 
 #: templates/model_form.html.twig:15
+msgid "Export the configuration"
+msgstr ""
+
+#: templates/model_form.html.twig:20
+msgid "Replace from a file"
+msgstr ""
+
+#: templates/model_form.html.twig:30 templates/model_import.html.twig:57
 msgid "Entities are created and managed below this entity."
 msgstr ""
 
-#: templates/model_form.html.twig:22
+#: templates/model_form.html.twig:37
 msgid "Delimiter"
 msgstr ""
 
-#: templates/model_form.html.twig:23
+#: templates/model_form.html.twig:38
 msgid "Encoding"
 msgstr ""
 
-#: templates/model_form.html.twig:24
+#: templates/model_form.html.twig:39
 msgid "Text delimiter"
 msgstr ""
 
-#: templates/model_form.html.twig:26
+#: templates/model_form.html.twig:41
 msgid "The first row of the file must contain the column names."
 msgstr ""
 
-#: templates/model_form.html.twig:29
+#: templates/model_form.html.twig:44
 msgid "Levels below the target root entity"
 msgstr ""
 
-#: templates/model_form.html.twig:35
+#: templates/model_form.html.twig:50
 msgid "Filter on CSV rows"
+msgstr ""
+
+#: templates/model_import.html.twig:16
+msgid "You cannot create a model and no model can be updated."
+msgstr ""
+
+#: templates/model_import.html.twig:25
+msgid "Export file"
+msgstr ""
+
+#: templates/model_import.html.twig:28
+msgid "A file downloaded with \"Export the configuration\" on the form of an import model."
+msgstr ""
+
+#: templates/model_import.html.twig:37
+msgid "Create a new model"
+msgstr ""
+
+#: templates/model_import.html.twig:43
+msgid "Replace the configuration of an existing model"
+msgstr ""
+
+#: templates/model_import.html.twig:53
+msgid "Leave empty to use the name stored in the file."
+msgstr ""
+
+#: templates/model_import.html.twig:64
+msgid "Model"
+msgstr ""
+
+#: templates/model_import.html.twig:68
+msgid "The CSV options, the levels and the filter are replaced. The name, the comments, the target root entity and the managed entities of the model are kept."
 msgstr ""
 
 #: templates/preview.html.twig:8

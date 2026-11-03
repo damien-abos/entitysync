@@ -14,6 +14,7 @@ configuring import models. Running imports is described in the
 - [Server settings](#server-settings)
 - [Rights](#rights)
 - [Configuring an import model](#configuring-an-import-model)
+- [Exporting and importing a model](#exporting-and-importing-a-model)
 - [Worked example](#worked-example)
 - [Before the first import](#before-the-first-import)
 - [Troubleshooting](#troubleshooting)
@@ -252,6 +253,32 @@ The model is validated when saved: missing key columns, invalid regular expressi
 incomplete conditions are reported and the model is not saved. Column names are
 checked against the file at each import.
 
+## Exporting and importing a model
+
+The configuration of a model can be saved to a file and loaded again, to copy a model
+from a test instance to production, to duplicate it, or to keep a copy before a
+change.
+
+- **Export**: on the form of a model, *Export the configuration* downloads a JSON file
+  (`entitysync-model-<name>.json`) with the name, the comments, the CSV options, the
+  levels, the filter and the known columns. The target root entity is only recorded by
+  its complete name: entity ids differ between instances. The managed entities and the
+  import history are not exported. *Read* right on the models.
+- **Import as a new model**: *Administration > Entity import > Import a model
+  configuration*, choose the file, *Create a new model*, then the target root entity
+  (and a name, otherwise the one of the file). If the target differs from the one of
+  the exported model, a warning is displayed. *Create* right on the models.
+- **Replace the configuration of a model**: same page, or *Replace from a file* on the
+  form of the model. The CSV options, the levels and the filter are replaced; the name,
+  the comments, the target root entity and the managed entities are kept, so the next
+  import goes on with the same entities. The change appears in the history of the
+  model. *Update* right on the model.
+
+The file is validated as when a model is saved (file format and version, CSV options,
+levels, regular expressions, filter); a file with an error is rejected and nothing is
+changed. **Replacing the levels or the filter of a model in use changes what the next
+import proposes**, deletions included: check the preview carefully.
+
 ## Worked example
 
 File `projects.csv`:
@@ -306,6 +333,7 @@ so *No site* is created; line 6 has no project, so it stops at *Nantes*.
 
 | Symptom | Cause and solution |
 |---|---|
+| *The file cannot be imported* (model configuration) | The file is not an export of this plugin, was edited by hand with an error, or comes from a newer version of the plugin (format version). The message lists every problem found. |
 | *Level "X": column "Y" does not exist in the file* | Column names are case sensitive and must match the header exactly. Check the delimiter if the whole header is read as one column. |
 | Accented characters are garbled | Set the encoding of the model explicitly (Windows-1252 for files saved by Excel on Windows, for example). |
 | *You need a recursive access to the target root entity* | Switch to the target entity (or a parent) with the *recursive* option in the entity selector, or grant the profile on that entity recursively. |

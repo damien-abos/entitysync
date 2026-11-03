@@ -101,6 +101,7 @@ src/
   JobRunner.php           Applies a queued job by batches
   JobStorage.php          Job files in files/_plugins/entitysync/jobs
   PlanFactory.php         Plan of an import against the current GLPI state
+  ModelTransfer.php       Export of a model configuration, import as a new model or into a model
 templates/                Twig views (@entitysync namespace)
 public/                   JavaScript editors and preview logic, CSS (served at /plugins/entitysync/)
 locales/                  entitysync.pot, fr_FR.po, en_GB.po (.mo built, not committed)
@@ -246,6 +247,7 @@ strings too.
 | `src/JobRunner.php`, `src/JobStorage.php`, `src/PlanFactory.php` | Batch application, job files, plan computation (shared by the upload and the runner) |
 | `ajax/preview.php`, `ajax/selection.php`, `ajax/job.php` | JSON endpoints: one page of a section (rendered by `templates/preview_rows.html.twig`), selection changes (JSON body, CSRF token in the `X-Glpi-Csrf-Token` header), progress of a job |
 | `src/GlpiGateway.php` | Loads the root subtree and the links; inspects every table with an `entities_id` column to block deletions; writes through `Entity::add/update/delete` so that GLPI rules, history, caches and hooks apply; captures the messages GLPI queues for the user and returns them as operation errors |
+| `src/ModelTransfer.php`, `front/model.transfer.php` | Export of a model configuration (`?export=<id>`, JSON download returned as a Symfony `Response` by the front script), import form (linked from the menu through `Model::getAdditionalMenuLinks()` and from the model form) and import: the file is parsed and validated by `Engine\Config\ModelExport`, then written through `Model::add()` / `Model::update()` so that the usual validation and history apply |
 | `src/ProfileRights.php` | Rights matrix tab on profiles |
 
 The snapshot is only used to display and select: the plan is recomputed by the
@@ -283,7 +285,11 @@ JSON. To add a label: add it there, use it in the JS, run `make locales`.
 | `glpi_plugin_entitysync_jobs` | `plugin_entitysync_models_id`, `users_id`, `status`, `filename`, `nb_rows`, `nb_total`, `nb_processed`, counters (`nb_*`), `selection` (JSON ids), `forbidden` (JSON rights restrictions), `results` (JSON, id → result), `message`, `plugin_entitysync_runs_id`, dates (`date_queued`, `date_start`, `date_end`) | Import jobs; `selection` and `results` are cleared when the job ends |
 
 The JSON formats of `levels` and `filter` are documented in the docblocks of
-`Engine\Config\LevelConfig` and `Engine\Filter\FilterEvaluator`.
+`Engine\Config\LevelConfig` and `Engine\Filter\FilterEvaluator`; the format of the
+model export files in the docblock of `Engine\Config\ModelExport`. The export format
+has its own version (`ModelExport::VERSION`): bump it when a change of the
+configuration would make old plugin versions misread a new file, and keep `parse()`
+reading the older versions.
 
 **Schema changes.** `plugin_entitysync_install()` creates the missing tables and
 applies the migrations, guarded by checks on the current schema (1.1.0 added the
@@ -331,8 +337,8 @@ public function testSomething(): void
 multipart upload, AJAX tabs, paginated preview, JSON selection calls) and runs GLPI's
 cron (`front/cron.php --force entitysyncApply`, from `GLPI_DIR`) until each job ends,
 then checks the database. It creates its own target root entity and model, then runs:
-initial import, idempotent re-import, adoption of an existing entity, sibling name
-collision, deletions blocked by an item, server-side dependency expansion, a job
+model export and import (as a new model, replacement, invalid file), initial import,
+idempotent re-import, adoption of an existing entity, sibling name collision, deletions blocked by an item, server-side dependency expansion, a job
 stopped before it runs, and a volume import (1,200 rows, 1,320 operations, more than
 PHP's default `max_input_vars`; `E2E_VOLUME_ROWS` changes it, 0 skips it), and full
 cleanup. With `define('PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET', 1);` in GLPI's

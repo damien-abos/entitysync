@@ -53,6 +53,19 @@ class Model extends CommonDBTM
         return __('Entity import', 'entitysync');
     }
 
+    public static function getAdditionalMenuLinks()
+    {
+        if (!ModelTransfer::canImport()) {
+            return false;
+        }
+        $label = __s('Import a model configuration', 'entitysync');
+
+        return [
+            '<i class="ti ti-file-arrow-left" title="' . $label . '"></i><span class="d-none d-xxl-block">' . $label . '</span>'
+                => '/plugins/entitysync/front/model.transfer.php',
+        ];
+    }
+
     public static function canApply(): bool
     {
         return (bool) Session::haveRight(self::$rightname, self::APPLY);
@@ -145,6 +158,10 @@ class Model extends CommonDBTM
                 '|'    => __('Pipe (|)', 'entitysync'),
             ],
             'js_labels'     => self::jsLabels(),
+            'export_url'    => $this->isNewItem() ? null : ModelTransfer::getExportUrl($this->getID()),
+            'replace_url'   => !$this->isNewItem() && $this->can($this->getID(), UPDATE)
+                ? ModelTransfer::getUrl() . '?models_id=' . $this->getID()
+                : null,
         ]);
 
         return true;

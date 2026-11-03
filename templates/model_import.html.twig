@@ -1,0 +1,97 @@
+{#
+ # Entity Sync plugin for GLPI
+ # @license GPL-3.0-or-later
+ #}
+{% import 'components/form/fields_macros.html.twig' as fields %}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="ti ti-file-arrow-left me-2"></i>{{ __('Import a model configuration', 'entitysync') }}
+        </h3>
+    </div>
+    <div class="card-body">
+        {% if not can_create and models is empty %}
+            <div class="alert alert-warning">
+                <i class="ti ti-lock me-1"></i>{{ __('You cannot create a model and no model can be updated.', 'entitysync') }}
+            </div>
+        {% endif %}
+        <form method="post" action="{{ action }}" enctype="multipart/form-data" data-submit-once>
+            <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row">
+                <div class="col-12 col-xl-8">
+                    <div class="mb-3">
+                        <label class="form-label" for="es-model-file">{{ __('Export file', 'entitysync') }}</label>
+                        <input class="form-control" type="file" name="model_file" id="es-model-file" accept=".json,application/json" required>
+                        <div class="form-text">
+                            {{ __('A file downloaded with "Export the configuration" on the form of an import model.', 'entitysync') }}
+                            {{ __('Maximum size: %s', 'entitysync')|format(max_size) }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {% if can_create %}
+                            <label class="form-check">
+                                <input class="form-check-input" type="radio" name="mode" value="new" {{ mode == 'new' ? 'checked' }}>
+                                <span class="form-check-label">{{ __('Create a new model', 'entitysync') }}</span>
+                            </label>
+                        {% endif %}
+                        {% if models is not empty %}
+                            <label class="form-check">
+                                <input class="form-check-input" type="radio" name="mode" value="replace" {{ mode == 'replace' ? 'checked' }}>
+                                <span class="form-check-label">{{ __('Replace the configuration of an existing model', 'entitysync') }}</span>
+                            </label>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if can_create %}
+                <div class="row" data-es-mode="new">
+                    {{ fields.textField('name', '', __('Name'), {
+                        'helper': __('Leave empty to use the name stored in the file.', 'entitysync'),
+                    }) }}
+                    {{ fields.dropdownField('Entity', 'entities_id_target', session('glpiactive_entity'), __('Target root entity', 'entitysync'), {
+                        'entity': -1,
+                        'helper': __('Entities are created and managed below this entity.', 'entitysync'),
+                    }) }}
+                </div>
+            {% endif %}
+
+            {% if models is not empty %}
+                <div class="row" data-es-mode="replace">
+                    {{ fields.dropdownArrayField('models_id', models_id, models, __('Model', 'entitysync')) }}
+                    <div class="col-12 mb-3">
+                        <div class="alert alert-info mb-0">
+                            <i class="ti ti-info-circle me-1"></i>
+                            {{ __('The CSV options, the levels and the filter are replaced. The name, the comments, the target root entity and the managed entities of the model are kept.', 'entitysync') }}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <button type="submit" name="import" value="1" class="btn btn-primary">
+                <i class="ti ti-upload"></i>
+                <span>{{ __('Import', 'entitysync') }}</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var form = document.currentScript.previousElementSibling.querySelector('form');
+        var update = function () {
+            var checked = form.querySelector('input[name="mode"]:checked');
+            var mode = checked ? checked.value : '';
+            form.querySelectorAll('[data-es-mode]').forEach(function (section) {
+                section.classList.toggle('d-none', section.getAttribute('data-es-mode') !== mode);
+            });
+        };
+        form.querySelectorAll('input[name="mode"]').forEach(function (radio) {
+            radio.addEventListener('change', update);
+        });
+        update();
+    })();
+</script>

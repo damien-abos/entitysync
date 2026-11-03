@@ -14,6 +14,7 @@ droits et paramétrage des modèles d'import. Le lancement des imports est décr
 - [Réglages du serveur](#réglages-du-serveur)
 - [Droits](#droits)
 - [Paramétrer un modèle d'import](#paramétrer-un-modèle-dimport)
+- [Exporter et importer un modèle](#exporter-et-importer-un-modèle)
 - [Exemple complet](#exemple-complet)
 - [Avant le premier import](#avant-le-premier-import)
 - [Résolution de problèmes](#résolution-de-problèmes)
@@ -260,6 +261,34 @@ Le modèle est validé à l'enregistrement : colonnes clés manquantes, expressi
 régulières invalides ou conditions incomplètes sont signalées et le modèle n'est pas
 enregistré. Les noms de colonnes sont vérifiés par rapport au fichier à chaque import.
 
+## Exporter et importer un modèle
+
+La configuration d'un modèle peut être enregistrée dans un fichier puis rechargée,
+pour copier un modèle d'une instance de test vers la production, le dupliquer, ou en
+garder une copie avant une modification.
+
+- **Export** : sur le formulaire d'un modèle, *Exporter la configuration* télécharge un
+  fichier JSON (`entitysync-model-<nom>.json`) avec le nom, les commentaires, les
+  options CSV, les niveaux, le filtre et les colonnes connues. L'entité racine cible
+  n'est enregistrée que par son nom complet : les identifiants d'entités diffèrent
+  d'une instance à l'autre. Les entités gérées et l'historique des imports ne sont pas
+  exportés. Droit *Lecture* sur les modèles.
+- **Import comme nouveau modèle** : *Administration > Import d’entités > Importer une
+  configuration de modèle*, choisissez le fichier, *Créer un nouveau modèle*, puis
+  l'entité racine cible (et un nom, sinon celui du fichier). Si la cible diffère de
+  celle du modèle exporté, un avertissement s'affiche. Droit *Création* sur les modèles.
+- **Remplacer la configuration d'un modèle** : même page, ou *Remplacer depuis un
+  fichier* sur le formulaire du modèle. Les options CSV, les niveaux et le filtre sont
+  remplacés ; le nom, les commentaires, l'entité racine cible et les entités gérées sont
+  conservés, le prochain import continue donc avec les mêmes entités. La modification
+  apparaît dans l'historique du modèle. Droit *Modification* sur le modèle.
+
+Le fichier est validé comme lors de l'enregistrement d'un modèle (format et version du
+fichier, options CSV, niveaux, expressions régulières, filtre) ; un fichier en erreur
+est refusé et rien n'est modifié. **Remplacer les niveaux ou le filtre d'un modèle déjà
+utilisé change ce que propose le prochain import**, suppressions comprises : vérifiez
+attentivement la prévisualisation.
+
 ## Exemple complet
 
 Fichier `projets.csv` :
@@ -316,6 +345,7 @@ projet, elle s'arrête donc à *Nantes*.
 
 | Symptôme | Cause et solution |
 |---|---|
+| *Le fichier ne peut pas être importé* (configuration de modèle) | Le fichier n'est pas un export de ce plugin, a été modifié à la main avec une erreur, ou vient d'une version plus récente du plugin (version du format). Le message liste tous les problèmes trouvés. |
 | *Niveau « X » : la colonne « Y » n'existe pas dans le fichier* | Les noms de colonnes sont sensibles à la casse et doivent correspondre exactement à l'en-tête. Vérifiez le séparateur si tout l'en-tête est lu comme une seule colonne. |
 | Les caractères accentués sont illisibles | Indiquez explicitement l'encodage dans le modèle (Windows-1252 pour un fichier enregistré par Excel sous Windows, par exemple). |
 | *Vous devez avoir un accès récursif à l'entité racine cible* | Placez-vous sur l'entité cible (ou un parent) avec l'option *récursif* dans le sélecteur d'entité, ou donnez au profil un accès récursif sur cette entité. |

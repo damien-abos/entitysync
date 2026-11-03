@@ -318,6 +318,7 @@ final class Scenario
         $this->login();
         $this->createRootAndModel();
         $this->checkModelScreens();
+        $this->exportAndImportModel();
 
         $this->section('Initial import');
         $preview = $this->upload('01-initial.csv');
@@ -527,6 +528,79 @@ final class Scenario
         }
         $response = $this->browser->tab('Profile', 4, 'GlpiPlugin\\Entitysync\\ProfileRights$1', '/front/profile.form.php');
         $this->assertTrue($response['status'] === 200 && str_contains($response['body'], '_plugin_entitysync_model['), 'profile rights tab');
+    }
+
+    /**
+     * Exports the model, imports the file as a new model, replaces its configuration,
+     * and rejects a file that is not an export.
+     */
+    private function exportAndImportModel(): void
+    {
+        $this->section('Model export and import');
+        $response = $this->browser->get('/plugins/entitysync/front/model.transfer.php?export=' . $this->modelId);
+        $export = json_decode($response['body'], true);
+        $this->assertTrue($response['status'] === 200 && is_array($export) && ($export['format'] ?? null) === 'entitysync-model', 'export downloads a model file');
+        $this->assertSame(
+            json_decode((string) file_get_contents(FIXTURES . '/levels.json'), true)[2]['comment_columns'],
+            $export['model']['levels'][2]['comment_columns'],
+            'export contains the levels',
+        );
+        $this->assertSame(200, $this->browser->get('/plugins/entitysync/front/model.transfer.php')['status'], 'import form');
+
+        $file = (string) tempnam(sys_get_temp_dir(), 'entitysync-model-');
+        try {
+            file_put_contents($file, $response['body']);
+            $response = $this->importModel($file, ['mode' => 'new', 'name' => 'E2E imported model', 'entities_id_target' => $this->rootId]);
+            if (preg_match('/model\.form\.php\?id=(\d+)/', (string) $response['location'], $m) !== 1) {
+                throw new E2EFailure('Model import did not redirect to the new model (HTTP ' . $response['status'] . ').');
+            }
+            $importedId = (int) $m[1];
+            $config = function (int $id): array {
+                $row = (array) $this->db->query('SELECT levels, filter, csv_delimiter, csv_enclosure, csv_encoding, known_columns FROM glpi_plugin_entitysync_models WHERE id = ' . $id)->fetch_assoc();
+                foreach (['levels', 'filter', 'known_columns'] as $json) {
+                    $row[$json] = json_decode((string) $row[$json], true) ?? [];
+                }
+
+                return $row;
+            };
+            $this->assertSame($config($this->modelId), $config($importedId), 'imported model has the same configuration');
+            $this->assertSame([$this->rootId, 'E2E imported model'], [
+                (int) $this->scalar('SELECT entities_id_target FROM glpi_plugin_entitysync_models WHERE id = ?', [$importedId]),
+                $this->scalar('SELECT name FROM glpi_plugin_entitysync_models WHERE id = ?', [$importedId]),
+            ], 'target and name of the imported model');
+
+            $export['model']['levels'] = [['label' => 'Organisation', 'key_columns' => ['Organisation']]];
+            $export['model']['csv']['delimiter'] = ';';
+            file_put_contents($file, json_encode($export));
+            $this->importModel($file, ['mode' => 'replace', 'models_id' => $importedId]);
+            $this->assertSame([1, ';', 'E2E imported model'], [
+                (int) $this->scalar('SELECT JSON_LENGTH(levels) FROM glpi_plugin_entitysync_models WHERE id = ?', [$importedId]),
+                $this->scalar('SELECT csv_delimiter FROM glpi_plugin_entitysync_models WHERE id = ?', [$importedId]),
+                $this->scalar('SELECT name FROM glpi_plugin_entitysync_models WHERE id = ?', [$importedId]),
+            ], 'configuration replaced, name kept');
+
+            file_put_contents($file, '{"format": "something else"}');
+            $response = $this->importModel($file, ['mode' => 'new', 'entities_id_target' => $this->rootId]);
+            $this->assertTrue(str_contains((string) $response['location'], 'model.transfer.php'), 'invalid file rejected');
+
+            $this->purge('/plugins/entitysync/front/model.form.php', $importedId);
+        } finally {
+            @unlink($file);
+        }
+    }
+
+    /**
+     * @param array<string, int|string> $fields
+     *
+     * @return array{status: int, location: string|null, body: string}
+     */
+    private function importModel(string $file, array $fields): array
+    {
+        return $this->browser->upload('/plugins/entitysync/front/model.transfer.php', $fields + [
+            'import'           => 1,
+            '_glpi_csrf_token' => $this->browser->csrfToken(),
+            'model_file'       => new CURLFile($file, 'application/json', 'model.json'),
+        ]);
     }
 
     private function upload(string $fixture, bool $isFixture = true): Preview

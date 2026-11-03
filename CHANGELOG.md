@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Export and import of the configuration of an import model: *Export the
+  configuration* on the model form downloads a JSON file (name, comments, CSV options,
+  levels, filter, known columns; the target root entity by name only); *Import a model
+  configuration* (model list menu) creates a new model from such a file, or replaces the
+  CSV options, levels and filter of an existing model (also from *Replace from a file*
+  on its form), keeping its target and managed entities. Files are validated like the
+  model form; the format is versioned.
+
 ## 0.0.2
 
 - **Fix**: applying a preview of more than about 1,000 operations failed with HTTP 400,
