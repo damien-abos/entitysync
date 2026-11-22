@@ -59,12 +59,14 @@ The menu entry is *Administration > Entity import*. See the
 
 ## Development
 
-Open the repository in its dev container: GLPI and the plugin are installed
-automatically and served on <http://localhost:8080> (`glpi` / `glpi`).
+Open the repository in its dev container: GLPI and MariaDB run in a Docker Compose
+stack (`docker/compose.yml`) started with the container, with the plugin installed,
+on <http://localhost:8080> (`glpi` / `glpi`).
 
 ```sh
 make check      # lint, unit tests, translation checks
-make e2e        # end-to-end scenario against the running GLPI
+make glpi-up    # (re)start GLPI and install the plugin (any Docker host)
+make e2e        # end-to-end scenario against the GLPI stack
 make package    # deployable archive in dist/
 ```
 

@@ -19,53 +19,67 @@ it. User-facing behaviour is described in the [user guide](en/user-guide.md) and
 
 ## Development environment
 
+GLPI and MariaDB run in a Docker Compose stack, `docker/compose.yml`, used by the
+dev container and the CI alike. The dev container itself only holds the tools.
+
+### GLPI stack
+
+- `docker/glpi/` builds the GLPI image: Alpine 3.24, Apache (port 8080) and PHP-FPM
+  8.5, run as the non-root user `glpi` (uid 1000), GLPI's cron run every minute by
+  supercronic, like the system crontab of a server. The GLPI release is the
+  `GLPI_VERSION` build argument (default in `docker/compose.yml`).
+- `docker/compose.yml` adds MariaDB 11.4 and mounts the repository as
+  `/var/www/glpi/plugins/entitysync`, so PHP, Twig and JavaScript changes apply on the
+  next request (clear the browser cache for JavaScript). GLPI runs in the
+  `development` environment (strict Twig variables, debug logs) and its logs are
+  written to `docker/log/` in the repository (`php-errors.log` must stay clean).
+- `tools/glpi.sh` drives it (`make glpi-up`, `glpi-down`, `glpi-reset`): `up`
+  compiles the translations, builds and starts the stack, waits for GLPI, writes the
+  local constants and installs and activates the plugin. It is idempotent.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `COMPOSE` | `docker compose` | Compose command (e.g. `podman-compose`) |
+| `GLPI_VERSION` | see `docker/compose.yml` | GLPI release, or `latest` for the latest 11.0.x; `make glpi-reset` first when changing it (the database is not migrated) |
+| `GLPI_HTTP_PORT`, `DB_PORT` | `8080`, `3306` | Published ports |
+| `ENTITYSYNC_RUN_TIME_BUDGET` | unset (50 s) | `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET`, seconds per execution of the background task |
+
+GLPI is on <http://localhost:8080> (login `glpi` / `glpi`). Commands in the GLPI
+container go through `tools/glpi.sh exec`:
+
+```sh
+tools/glpi.sh exec glpi-console plugin:install entitysync -u glpi --force   # after install/schema changes
+tools/glpi.sh exec php /var/www/glpi/front/cron.php --force entitysyncApply # apply a queued job at once
+```
+
+The constants of `ENTITYSYNC_RUN_TIME_BUDGET` are written to
+`/data/glpi/config/local_define.php` in the data volume; the image's
+`config/local_define.php` loads it. Data (GLPI files, database) live in the
+`entitysync_glpi-data` and `entitysync_glpi-db` volumes; `make glpi-reset` deletes
+them.
+
 ### Dev container (recommended)
 
-The repository ships a [dev container](https://containers.dev/) with PHP 8.3 on Debian 13, the
-extensions GLPI needs, gettext, shellcheck, Node.js, Claude Code and a MariaDB 10.11
-service.
+`.devcontainer/devcontainer.json` uses the `base:trixie` image with the
+*docker-in-docker*, Node.js and Claude Code features.
 
 1. Open the repository in VS Code (or any editor supporting dev containers) and run
    *Dev Containers: Reopen in Container*.
-2. On first creation, `.devcontainer/post-create.sh` runs `make glpi-install`: it
-   downloads GLPI (latest 11.0.x, or `GLPI_VERSION` from the host environment),
-   installs its database, links the repository as `plugins/entitysync`, and installs
-   and activates the plugin.
-3. GLPI is served on <http://localhost:8080> (login `glpi` / `glpi`) by
-   `.devcontainer/serve.sh`, PHP's built-in server, which is the container's main
-   process. Its log is `/opt/glpi/files/_log/php-server.log`.
-4. `serve.sh` also runs GLPI's cron every minute (`front/cron.php`, log
-   `cron-loop.log`), like the system crontab of a server, so queued imports are
-   applied by the background task. To run it at once:
-   `php /opt/glpi/front/cron.php --force entitysyncApply`.
+2. On creation, `.devcontainer/post-create.sh` installs the PHP CLI (Debian's, 8.4)
+   with the extensions of the engine and of the e2e client, gettext and shellcheck.
+3. On each start, `make glpi-up` starts the GLPI stack in the container's own Docker
+   daemon (the first build takes a few minutes). Port 8080 is forwarded.
 
-GLPI runs in the `development` environment: strict Twig variables, debug logs in
-`/opt/glpi/files/_log`. Because the plugin directory is a symbolic link to the
-repository, PHP, Twig and JavaScript changes apply on the next request (clear the
-browser cache for JavaScript). Changes to `setup.php` or `hook.php` that alter the
-installation need a reinstall: `make glpi-install` after bumping the version, or
-`php /opt/glpi/bin/console plugin:install entitysync -u glpi --force`.
-
-Xdebug is installed and starts on demand (trigger mode, port 9003): use a browser
-extension or the `XDEBUG_TRIGGER` cookie.
-
-GLPI and database data live in named volumes (`glpi`, `db-data`), and Claude Code's
-settings in `claude-config`, so they survive container rebuilds. To start from
-scratch, remove these volumes (`docker volume ls` lists them, prefixed with the
-compose project name) and rebuild the container.
+The images and volumes of the inner Docker daemon, and Claude Code's settings, are
+kept in volumes of the dev container, so they survive rebuilds. There is no Xdebug
+and GLPI's sources are not in the dev container (they are in the GLPI image).
 
 ### Without the dev container
 
-You need PHP 8.2+ with GLPI's extensions, the gettext tools, and a MariaDB or MySQL
-database. Then:
-
-```sh
-export GLPI_DIR=$HOME/glpi DB_HOST=127.0.0.1 DB_NAME=glpi DB_USER=glpi DB_PASSWORD=glpi
-make glpi-install
-php -S 127.0.0.1:8080 -t "$GLPI_DIR/public" "$GLPI_DIR/public/index.php"
-```
-
-`tools/install-glpi.sh` documents all its variables; it is idempotent.
+You need Docker with Compose (or Podman with `COMPOSE=podman-compose`), PHP 8.2+
+with `curl`, `intl`, `mbstring` and `mysqli`, and the gettext tools. Then
+`make glpi-up`. On a host with SELinux (Fedora...), the bind mounts of
+`docker/compose.yml` need relabelling or `label = false` in `containers.conf`.
 
 ### Make targets
 
@@ -73,10 +87,11 @@ php -S 127.0.0.1:8080 -t "$GLPI_DIR/public" "$GLPI_DIR/public/index.php"
 |---|---|
 | `make check` | Lint (PHP, JavaScript, shell), unit tests, translation checks |
 | `make test` | Engine unit tests |
-| `make e2e` | End-to-end scenario against the running GLPI |
+| `make e2e` | End-to-end scenario against the GLPI stack |
 | `make locales` | Extract strings, update the `.po` files, compile `.mo` |
 | `make package` | Build `dist/entitysync-<version>.tar.gz` |
-| `make glpi-install` | Install or refresh GLPI and the plugin |
+| `make glpi-up` | Start the GLPI stack, install and activate the plugin |
+| `make glpi-down`, `make glpi-reset` | Stop the GLPI stack, keeping or deleting its data |
 
 ## Repository layout
 
@@ -108,7 +123,8 @@ tests/
   run.php, TestCase.php   Dependency-free unit test runner
   Engine/                 Engine unit tests
   e2e/                    End-to-end scenario and its fixtures
-tools/                    install-glpi.sh, extract-locales.php, build-package.sh
+tools/                    glpi.sh (GLPI stack), extract-locales.php, build-package.sh
+docker/                   GLPI + MariaDB stack for development and CI (compose.yml, glpi/ image)
 docs/                     User, installation and developer documentation
 .devcontainer/            Development container
 .github/workflows/ci.yml  CI pipeline
@@ -329,21 +345,22 @@ public function testSomething(): void
 
 `tests/e2e/run.php` drives a running GLPI over HTTP (login, CSRF tokens, forms,
 multipart upload, AJAX tabs, paginated preview, JSON selection calls) and runs GLPI's
-cron (`front/cron.php --force entitysyncApply`, from `GLPI_DIR`) until each job ends,
+cron (`front/cron.php --force entitysyncApply`, in `GLPI_DIR` through the `GLPI_EXEC`
+command prefix) until each job ends,
 then checks the database. It creates its own target root entity and model, then runs:
 initial import, idempotent re-import, adoption of an existing entity, sibling name
 collision, deletions blocked by an item, server-side dependency expansion, a job
 stopped before it runs, and a volume import (1,200 rows, 1,320 operations, more than
 PHP's default `max_input_vars`; `E2E_VOLUME_ROWS` changes it, 0 skips it), and full
-cleanup. With `define('PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET', 1);` in GLPI's
-`config/local_define.php`, executions are cut after one second, which exercises the
-resumption over several executions (the CI sets 2 seconds). It fails on any new line in
-`php-errors.log` when `GLPI_LOG_DIR` is set (the dev container and the CI set it).
+cleanup. With `ENTITYSYNC_RUN_TIME_BUDGET=1 make glpi-up`, executions are cut after
+one second, which exercises the resumption over several executions (the CI sets 2
+seconds). It fails on any new line in
+`php-errors.log` when `GLPI_LOG_DIR` is set (`make e2e` sets it to `docker/log`).
 When it fails, what it created is left in place for inspection: an
 `E2E entitysync <date>` entity and an `E2E model` import model.
 
-Its variables are documented at the top of the file. In the dev container,
-`make e2e` works as is. Fixtures are in `tests/e2e/fixtures/`.
+Its variables are documented at the top of the file; the Makefile sets them for the
+stack of `docker/compose.yml`, so `make e2e` works as is after `make glpi-up`. Fixtures are in `tests/e2e/fixtures/`.
 
 ## Continuous integration and releases
 
@@ -353,7 +370,7 @@ Its variables are documented at the top of the file. In the dev container,
 |---|---|
 | Lint and translations | `make lint`, `make locales-check` |
 | Unit tests | `make test` on PHP 8.2 to 8.5 |
-| E2E | GLPI 11.0.0 with PHP 8.2, and the latest GLPI 11.0.x with PHP 8.4, on MariaDB 10.11, GLPI in `development` mode, background task cut after 2 s to exercise resumption; GLPI logs uploaded on failure |
+| E2E | Stack of `docker/compose.yml` (PHP 8.5, MariaDB 11.4) built for GLPI 11.0.0 and the latest 11.0.x, GLPI in `development` mode, background task cut after 2 s to exercise resumption; GLPI and compose logs uploaded on failure |
 | Package | `tools/build-package.sh`, archive and checksum uploaded as the `entitysync-package` artifact |
 | GitHub release | On `v*` tags only: rebuilds the archive, extracts the notes of the version from `CHANGELOG.md`, creates the release with the archive and its checksum |
 

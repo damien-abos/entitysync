@@ -14,7 +14,9 @@
  *   GLPI_URL        Base URL of GLPI                       (default http://127.0.0.1:8080)
  *   GLPI_USER       Super-Admin login                      (default glpi)
  *   GLPI_PASSWORD   Its password                           (default glpi)
- *   GLPI_DIR        GLPI installation, to run its cron     (default /opt/glpi)
+ *   GLPI_DIR        GLPI installation, to run its cron     (default /var/www/glpi)
+ *   GLPI_EXEC       Command prefix running a command where GLPI is installed
+ *                   (default: none, GLPI is local), e.g. "docker compose -f docker/compose.yml exec -T glpi"
  *   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD  GLPI database (default 127.0.0.1, 3306, glpi, glpi, glpi)
  *   GLPI_LOG_DIR    GLPI log directory; when set, new PHP errors fail the test
  *   E2E_VOLUME_ROWS Rows of the volume scenario            (default 1200; 0 skips it)
@@ -613,11 +615,13 @@ final class Scenario
 
     private function runCron(): void
     {
-        $glpiDir = rtrim(getenv('GLPI_DIR') ?: '/opt/glpi', '/');
+        $glpiDir = rtrim(getenv('GLPI_DIR') ?: '/var/www/glpi', '/');
+        $exec = trim((string) getenv('GLPI_EXEC'));
         $command = sprintf(
-            'php %s --force entitysyncApply%s 2>&1',
+            '%sphp %s --force entitysyncApply%s 2>&1',
+            $exec !== '' ? $exec . ' ' : '',
             escapeshellarg($glpiDir . '/front/cron.php'),
-            function_exists('posix_geteuid') && posix_geteuid() === 0 ? ' --allow-superuser' : '',
+            $exec === '' && function_exists('posix_geteuid') && posix_geteuid() === 0 ? ' --allow-superuser' : '',
         );
         exec($command, $output, $code);
         if ($code !== 0) {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Development: GLPI and MariaDB now run in a Docker Compose stack (`docker/`, GLPI on
+  Alpine with Apache and PHP-FPM 8.5, MariaDB 11.4), started by `make glpi-up`. The dev
+  container is reduced to the tools, with the docker-in-docker feature; the CI runs
+  the end-to-end scenario on the same stack, built for GLPI 11.0.0 and the latest
+  11.0.x. `tools/install-glpi.sh` and `make glpi-install` are removed.
+
 ## 0.0.2
 
 - **Fix**: applying a preview of more than about 1,000 operations failed with HTTP 400,

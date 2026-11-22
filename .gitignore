@@ -9,3 +9,6 @@
 .DS_Store
 *.swp
 .idea/
+
+# GLPI logs of the docker stack
+/docker/log/
