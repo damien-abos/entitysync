@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.3
 
 - **GLPI 12.0.x support**, in addition to GLPI 11.0.x, with the same package: the
   plugin adapts to the typed properties of GLPI 12 and to its CSRF protection based on

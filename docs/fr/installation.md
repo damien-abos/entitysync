@@ -84,6 +84,9 @@ une colonne `status` à l'historique et l'action automatique `entitysyncApply`. 
 la 0.0.2, les imports sont appliqués en arrière-plan : configurez le cron de GLPI
 (section suivante) avant le premier import.
 
+**De 0.0.2 vers 0.0.3** : pas de changement de schéma ; le même paquet fonctionne
+aussi sous GLPI 12.0.x. Lancez la mise à jour comme ci-dessus.
+
 ## Désinstallation
 
 La désinstallation du plugin (*Configuration > Plugins > Désinstaller*) supprime ses

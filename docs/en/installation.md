@@ -83,6 +83,9 @@ Models, managed entities and history are kept.
 0.0.2, imports are applied in the background: configure GLPI's cron (next section)
 before the first import.
 
+**From 0.0.2 to 0.0.3**: no schema change; the same package also runs on GLPI
+12.0.x. Run the update as above.
+
 ## Uninstallation
 
 Uninstalling the plugin (*Setup > Plugins > Uninstall*) drops its tables and rights:
