@@ -26,6 +26,9 @@ final class Operation
     public const FIELD_COMMENT = 'comment';
     public const FIELD_PARENT = 'parent';
 
+    /** Prefix of the change field of an entity property (`property:<field>`). */
+    public const PROPERTY_PREFIX = 'property:';
+
     /** @var list<array{field: string, old: string, new: string}> */
     public array $changes = [];
 
@@ -37,6 +40,14 @@ final class Operation
 
     /** Path id the entity was linked to before a key change (link operations only). */
     public ?string $previousPathId = null;
+
+    /**
+     * Managed entity properties of the desired entity (field => value), set on the
+     * entity when it is created, and on changed fields when it is updated or linked.
+     *
+     * @var array<string, string>
+     */
+    public array $properties = [];
 
     public function __construct(
         public readonly string $type,
@@ -71,6 +82,19 @@ final class Operation
         return $this->blockReasons !== [];
     }
 
+    public static function propertyField(string $property): string
+    {
+        return self::PROPERTY_PREFIX . $property;
+    }
+
+    /**
+     * Entity property of a change field, or null when the change is not on a property.
+     */
+    public static function propertyOf(string $field): ?string
+    {
+        return str_starts_with($field, self::PROPERTY_PREFIX) ? substr($field, strlen(self::PROPERTY_PREFIX)) : null;
+    }
+
     public function hasChange(string $field): bool
     {
         foreach ($this->changes as $change) {
@@ -101,6 +125,7 @@ final class Operation
             'path'           => $this->displayPath,
             'name'           => $this->name,
             'comment'        => $this->comment,
+            'properties'     => $this->properties,
             'entity_id'      => $this->entityId,
             'line'           => $this->line,
             'changes'        => $this->changes,

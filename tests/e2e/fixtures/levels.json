@@ -1,22 +1,59 @@
 [
     {
         "label": "Organisation",
-        "key_columns": ["Organisation"],
-        "comment_columns": [{"column": "Responsable", "label": "Responsable"}]
+        "key_columns": [
+            "Organisation"
+        ],
+        "comment_columns": [
+            {
+                "column": "Responsable",
+                "label": "Responsable"
+            }
+        ],
+        "properties": {
+            "tag": {
+                "source": "column",
+                "column": "Responsable"
+            },
+            "is_user_autoupdate": {
+                "source": "fixed",
+                "value": "1"
+            },
+            "entities_id_software": {
+                "source": "fixed",
+                "value": "-10"
+            }
+        }
     },
     {
         "label": "Site",
-        "key_columns": ["Site"],
-        "name_rules": [{"pattern": "^SITE[-_ ]", "replacement": "", "flags": "i"}],
+        "key_columns": [
+            "Site"
+        ],
+        "name_rules": [
+            {
+                "pattern": "^SITE[-_ ]",
+                "replacement": "",
+                "flags": "i"
+            }
+        ],
         "empty_label": "Sans site"
     },
     {
         "label": "Projet",
-        "key_columns": ["Code projet"],
+        "key_columns": [
+            "Code projet"
+        ],
         "name_column": "Projet",
         "comment_columns": [
-            {"column": "Code projet", "label": "Code"},
-            {"column": "Budget", "label": "Budget"}
+            {
+                "column": "Code projet",
+                "label": "Code"
+            },
+            {
+                "column": "Budget",
+                "label": "Budget"
+            }
         ]
     }
 ]

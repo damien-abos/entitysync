@@ -29,6 +29,10 @@
                             <div class="small"><span class="text-muted">{{ labels.comment }} :</span>
                                 <pre class="entitysync-pre mb-0">{{ op.comment }}</pre></div>
                         {% endif %}
+                        {% for property in op.property_values %}
+                            <div class="small"><span class="text-muted">{{ property.label }} :</span>
+                                {{ property.value is empty ? '∅' : property.value }}</div>
+                        {% endfor %}
                         {% if op.previous_path %}
                             <div class="small text-muted">
                                 <i class="ti ti-key me-1"></i>{{ __('Key changed, previously: %s', 'entitysync')|format(op.previous_path) }}
@@ -46,7 +50,7 @@
                                 {% else %}
                                     <del class="entitysync-old">{{ change.old is empty ? '∅' : change.old }}</del>
                                     <i class="ti ti-arrow-right mx-1"></i>
-                                    <ins class="entitysync-new">{{ change.new }}</ins>
+                                    <ins class="entitysync-new">{{ change.new is empty ? '∅' : change.new }}</ins>
                                 {% endif %}
                             </div>
                         {% endfor %}

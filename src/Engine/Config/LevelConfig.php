@@ -24,8 +24,16 @@ use GlpiPlugin\Entitysync\Engine\Util\Text;
  *   "name_rules": [{"pattern": "^SITE-", "replacement": "", "flags": "i"}],
  *   "comment_columns": [{"column": "Manager", "label": "Manager"}],
  *   "comment_skip_empty": true,
- *   "empty_label": "No site"              // optional name used when the key is empty mid-path
+ *   "empty_label": "No site",             // optional name used when the key is empty mid-path
+ *   "properties": {                       // optional other fields of the entity, by field name
+ *     "tag": {"source": "column", "column": "Site code"},
+ *     "is_user_autoupdate": {"source": "fixed", "value": "1"}
+ *   }
  * }
+ *
+ * The engine does not know which properties GLPI accepts: the plugin validates the
+ * field names and fixed values when the model is saved. Fields without an entry are
+ * not managed (left untouched on existing entities, GLPI defaults on new ones).
  */
 final class LevelConfig
 {
@@ -35,10 +43,17 @@ final class LevelConfig
     /** Separator used to build the default name from composite key parts. */
     public const NAME_PART_SEPARATOR = ' - ';
 
+    /** Property value given in the model, the same for every entity of the level. */
+    public const SOURCE_FIXED = 'fixed';
+
+    /** Property value read in a column of the file. */
+    public const SOURCE_COLUMN = 'column';
+
     /**
      * @param list<string>                                                        $keyColumns
      * @param list<array{pattern: string, replacement: string, flags: string}>    $nameRules
      * @param list<array{column: string, label: string}>                          $commentColumns
+     * @param array<string, array{source: string, value?: string, column?: string}> $properties
      */
     public function __construct(
         public readonly string $label,
@@ -48,6 +63,7 @@ final class LevelConfig
         public readonly array $commentColumns,
         public readonly bool $commentSkipEmpty,
         public readonly string $emptyLabel,
+        public readonly array $properties = [],
     ) {}
 
     /**
@@ -83,6 +99,19 @@ final class LevelConfig
             $commentColumns[] = ['column' => $column, 'label' => $label === '' ? $column : $label];
         }
 
+        $properties = [];
+        foreach ((array) ($data['properties'] ?? []) as $field => $spec) {
+            if (!is_string($field) || $field === '' || !is_array($spec)) {
+                continue;
+            }
+            $source = (string) ($spec['source'] ?? '');
+            if ($source === self::SOURCE_FIXED) {
+                $properties[$field] = ['source' => $source, 'value' => trim((string) ($spec['value'] ?? ''))];
+            } elseif ($source === self::SOURCE_COLUMN && trim((string) ($spec['column'] ?? '')) !== '') {
+                $properties[$field] = ['source' => $source, 'column' => trim((string) $spec['column'])];
+            }
+        }
+
         $nameColumn = trim((string) ($data['name_column'] ?? ''));
         $emptyLabel = Text::cleanName((string) ($data['empty_label'] ?? ''));
 
@@ -94,6 +123,7 @@ final class LevelConfig
             commentColumns: $commentColumns,
             commentSkipEmpty: (bool) ($data['comment_skip_empty'] ?? true),
             emptyLabel: $emptyLabel === '' ? $defaultEmptyLabel : $emptyLabel,
+            properties: $properties,
         );
     }
 
@@ -108,6 +138,11 @@ final class LevelConfig
         }
         foreach ($this->commentColumns as $item) {
             $columns[] = $item['column'];
+        }
+        foreach ($this->properties as $spec) {
+            if (isset($spec['column'])) {
+                $columns[] = $spec['column'];
+            }
         }
 
         return array_values(array_unique($columns));
@@ -228,5 +263,26 @@ final class LevelConfig
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Values of the managed properties for a row (fixed values, or the trimmed value of
+     * their column); for the placeholder entity of an empty mid-path key, column values
+     * are empty.
+     *
+     * @param array<string, string>|null $row Null for a placeholder entity.
+     *
+     * @return array<string, string>
+     */
+    public function propertiesOf(?array $row): array
+    {
+        $values = [];
+        foreach ($this->properties as $field => $spec) {
+            $values[$field] = isset($spec['column'])
+                ? ($row === null ? '' : trim($row[$spec['column']] ?? ''))
+                : (string) ($spec['value'] ?? '');
+        }
+
+        return $values;
     }
 }

@@ -16,7 +16,8 @@ namespace GlpiPlugin\Entitysync\Engine\Sync;
 final class ExistingState
 {
     /**
-     * @param array<int, array{id: int, name: string, comment: string|null, parent_id: int|null, completename: string}> $entities
+     * @param array<int, array{id: int, name: string, comment: string|null, parent_id: int|null, completename: string, properties?: array<string, string|null>}> $entities
+     *        `properties`: current values of the entity properties a model may manage.
      *        Root entity and all its descendants, keyed by id.
      * @param array<string, array{id: int, entity_id: int}> $links
      *        Links of the current model keyed by path id.

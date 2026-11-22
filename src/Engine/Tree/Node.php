@@ -18,6 +18,7 @@ final class Node
     /**
      * @param list<string> $segments  Key of each level from level 1 to this node.
      * @param list<string> $namePath  Names of each level from level 1 to this node.
+     * @param array<string, string> $properties Managed entity properties (field => value).
      */
     public function __construct(
         public readonly string $pathId,
@@ -29,6 +30,7 @@ final class Node
         public readonly bool $isPlaceholder,
         public readonly int $firstLine,
         public readonly array $namePath,
+        public readonly array $properties = [],
     ) {}
 
     public function displayPath(): string

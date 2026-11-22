@@ -111,6 +111,7 @@ src/
   Link.php, Run.php       Managed entities and import history (CommonDBTM)
   ProfileRights.php       Rights tab on profiles
   GlpiGateway.php         Engine gateway: reads GLPI state, writes entities
+  EntityProperties.php    Entity properties a level can manage: fields, choices, validation
   ImportController.php    Upload -> preview -> queue -> status workflow, AJAX handlers
   Job.php                 Import job (CommonDBTM) and the automatic action entitysyncApply
   JobRunner.php           Applies a queued job by batches
@@ -200,7 +201,8 @@ planner must never propose for deletion. Sibling names are compared with
 
 `Planner::plan()` compares the nodes, ordered by level, with the GLPI state:
 
-- linked path → `update` if name, comment (when managed) or parent differ;
+- linked path → `update` if name, comment (when managed), a managed property or parent
+  differ;
 - unlinked path, same-name entity under the expected parent, not linked elsewhere
   (or linked by this model to a path that disappeared) → `link`;
 - otherwise → `add`;
@@ -211,6 +213,26 @@ the operations it **requires** (the creation or link of its parent; for a deleti
 the deletion of its managed children) and **block reasons** (items still attached,
 unmanaged children, name collision, entity managed by another model, missing
 rights). Blocks propagate to dependent operations.
+
+### Entity properties
+
+A level may manage other fields of its entities (`LevelConfig::$properties`, field =>
+`{source: fixed, value}` or `{source: column, column}`). The engine treats them as
+opaque strings: `TreeBuilder` stores the values of the first row on the `Node` (a
+different value on another row is a warning, as for names and comments), `Planner`
+compares them with `ExistingState` entities (`properties`, NULL and empty being equal)
+and records the differences as `property:<field>` changes, and `Applier` passes them
+to `createEntity()` and `updateEntity()`.
+
+What GLPI accepts lives on the plugin side, in `EntityProperties`: the fields of the
+*Advanced information* and *Assets* tabs of an entity, their labels (GLPI's own
+strings, translated by GLPI), their type (text, or choice among the values of the
+entity form) and choices, the validation of a model, the reading of the current values
+(the negative values of `entities_id_software` and `transfers_id` are stored by GLPI in
+`entities_strategy_software` / `transfers_strategy`) and the display of values in the
+preview. Choice fields only take fixed values; text fields can also come from a column.
+Adding a field there makes it available, provided that it exists in every supported
+GLPI version.
 
 ### Selection
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Entity properties**: each level of a model can manage the fields of the *Advanced
+  information* and *Assets* tabs of its entities (inventory TAG, LDAP information,
+  mail domain, LDAP directory and filter, autofill of the financial dates, entity for
+  software creation, automatic transfer model, agent base URL, automatic updates of
+  the elements related to computers). Each property is not managed, fixed in the
+  model, or read in a column of the file (text fields); managed properties are set on
+  new entities, and the differences on existing ones are proposed as updates in the
+  preview.
+
 ## 0.0.3
 
 - **GLPI 12.0.x support**, in addition to GLPI 11.0.x, with the same package: the

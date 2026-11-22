@@ -25,7 +25,7 @@ use GlpiPlugin\Entitysync\Engine\Util\Text;
  * - an empty key in the middle of the path becomes a placeholder node named after the
  *   level's "empty label" (e.g. "No site"), with a reserved key that cannot collide with
  *   a real CSV value;
- * - when several rows describe the same node with different names or comments, the first
+ * - when several rows describe the same node with different names, comments or properties, the first
  *   row wins and a warning is raised;
  * - two different keys producing the same name under the same parent are an error
  *   (GLPI enforces unique names among siblings): the second node is excluded.
@@ -96,10 +96,12 @@ final class TreeBuilder
                 if ($isPlaceholder) {
                     $name = $level->emptyLabel;
                     $comment = $level->commentColumns === [] ? null : '';
+                    $properties = $level->propertiesOf(null);
                 } else {
                     $rawName = $level->rawNameOf($row);
                     $name = $level->applyNameRules($rawName);
                     $comment = $level->commentOf($row);
+                    $properties = $level->propertiesOf($row);
 
                     if ($name === '' || mb_strlen($name, 'UTF-8') > self::MAX_NAME_LENGTH) {
                         $invalid++;
@@ -122,6 +124,9 @@ final class TreeBuilder
                     }
                     if (Text::normalizeMultiline($existing->comment) !== Text::normalizeMultiline($comment)) {
                         $fields['comment'] = true;
+                    }
+                    if ($existing->properties !== $properties) {
+                        $fields['properties'] = true;
                     }
                     if ($fields !== []) {
                         $conflicts[$pathId] ??= ['lines' => [], 'fields' => []];
@@ -164,6 +169,7 @@ final class TreeBuilder
                     isPlaceholder: $isPlaceholder,
                     firstLine: $line,
                     namePath: $namePath,
+                    properties: $properties,
                 );
                 $siblings[$siblingKey][$normalized] = $pathId;
                 $parentPathId = $pathId;
@@ -182,7 +188,11 @@ final class TreeBuilder
                     '"%1$s": %2$s differ on %3$d other row(s) (lines %4$s); the values of line %5$d are kept.',
                     $node->displayPath(),
                     implode(' / ', array_map(
-                        static fn (string $field): string => $field === 'name' ? Msg::t('name') : Msg::t('comment'),
+                        static fn (string $field): string => match ($field) {
+                            'name'    => Msg::t('name'),
+                            'comment' => Msg::t('comment'),
+                            default   => Msg::t('properties'),
+                        },
                         array_keys($conflict['fields']),
                     )),
                     count($lines),

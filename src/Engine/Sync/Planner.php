@@ -21,7 +21,7 @@ use GlpiPlugin\Entitysync\Engine\Util\Text;
  * Compares the desired tree with GLPI and proposes operations.
  *
  * Matching uses the key path stored in the link table:
- * - linked node: update when name, comment or parent differ;
+ * - linked node: update when name, comment, managed properties or parent differ;
  * - unlinked node with a same-name entity under the same parent: link (adoption), or
  *   re-link when that entity was linked to a path that disappeared (key change);
  * - unlinked node otherwise: add;
@@ -176,7 +176,7 @@ final class Planner
 
     private function newOperation(string $type, Node $node, ?int $entityId, ?int $parentEntityId): Operation
     {
-        return new Operation(
+        $op = new Operation(
             type: $type,
             pathId: $node->pathId,
             level: $node->level,
@@ -188,6 +188,9 @@ final class Planner
             parentEntityId: $parentEntityId,
             line: $node->firstLine,
         );
+        $op->properties = $node->properties;
+
+        return $op;
     }
 
     /**
@@ -215,6 +218,14 @@ final class Planner
                 'old'   => Text::normalizeMultiline($entity['comment']),
                 'new'   => $node->comment,
             ];
+        }
+
+        foreach ($node->properties as $field => $value) {
+            // Empty and NULL are the same for GLPI's text fields.
+            $current = (string) ($entity['properties'][$field] ?? '');
+            if ($current !== $value) {
+                $op->changes[] = ['field' => Operation::propertyField($field), 'old' => $current, 'new' => $value];
+            }
         }
 
         if ($parentEntityId === null || $entity['parent_id'] !== $parentEntityId) {

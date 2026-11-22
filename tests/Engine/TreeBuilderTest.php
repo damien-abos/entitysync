@@ -106,6 +106,57 @@ final class TreeBuilderTest extends TestCase
         $this->assertSame(null, $project->comment, 'comments not managed without comment columns');
     }
 
+    public function testPropertiesFromFixedValuesAndColumns(): void
+    {
+        $levels = [
+            [
+                'label'       => 'Org',
+                'key_columns' => ['Org'],
+                'properties'  => [
+                    'tag'                => ['source' => 'column', 'column' => 'Tag'],
+                    'is_user_autoupdate' => ['source' => 'fixed', 'value' => '1'],
+                    'ignored'            => ['source' => 'column', 'column' => ''],
+                    'unknown_source'     => ['source' => 'other', 'value' => 'x'],
+                ],
+            ],
+            ['label' => 'Site', 'key_columns' => ['Site']],
+        ];
+        $config = $this->config($levels);
+        $this->assertSame(['Org', 'Tag'], $config->levels[0]->referencedColumns());
+
+        $result = $this->build("Org;Site;Tag
+ACME;Paris; T-1 
+;Lyon;T-2
+", $config);
+
+        $this->assertSame(['tag' => 'T-1', 'is_user_autoupdate' => '1'], $result->nodes[Path::id(['ACME'])]->properties);
+        $this->assertSame([], $result->nodes[Path::id(['ACME', 'Paris'])]->properties, 'no property managed on level 2');
+        // Placeholder of an empty mid-path key: fixed values, empty column values.
+        $this->assertSame(['tag' => '', 'is_user_autoupdate' => '1'], $result->nodes[Path::id([Path::PLACEHOLDER_KEY])]->properties);
+    }
+
+    public function testPropertyConflictKeepsFirstRowWithWarning(): void
+    {
+        $levels = [['label' => 'Org', 'key_columns' => ['Org'], 'properties' => ['tag' => ['source' => 'column', 'column' => 'Tag']]]];
+        $result = $this->build("Org;Tag
+ACME;T-1
+ACME;T-2
+", $this->config($levels));
+
+        $this->assertSame(['tag' => 'T-1'], $result->nodes[Path::id(['ACME'])]->properties);
+        $this->assertCount(1, $result->issues);
+        $this->assertTrue(str_contains($result->issues[0]->message, 'properties'), $result->issues[0]->message);
+    }
+
+    public function testPropertyColumnMustExist(): void
+    {
+        $levels = [['label' => 'Org', 'key_columns' => ['Org'], 'properties' => ['tag' => ['source' => 'column', 'column' => 'Missing']]]];
+        $errors = $this->config($levels)->validate(['Org']);
+
+        $this->assertCount(1, $errors);
+        $this->assertTrue(str_contains($errors[0], '"Missing"'), $errors[0]);
+    }
+
     public function testNameColumnFallsBackToKeyWhenEmpty(): void
     {
         $levels = [['label' => 'Org', 'key_columns' => ['Code'], 'name_column' => 'Label']];
