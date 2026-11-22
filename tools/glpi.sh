@@ -15,7 +15,8 @@
 #
 # Environment variables (defaults in brackets):
 #   COMPOSE                       Compose command                         [docker compose]
-#   GLPI_VERSION                  GLPI release, or "latest" for the latest 11.0.x [11.0.13]
+#   GLPI_VERSION                  GLPI release, "X.Y.x" (latest of a branch) or
+#                                 "latest"                                [11.0.13]
 #   GLPI_HTTP_PORT, DB_PORT       Published ports                         [8080, 3306]
 #   ENTITYSYNC_RUN_TIME_BUDGET    Seconds per execution of the background task
 #                                 (PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET)    [unset: 50]
@@ -35,15 +36,18 @@ compose() { "${COMPOSE[@]}" -f "$COMPOSE_FILE" "$@"; }
 
 in_glpi() { compose exec -T glpi "$@"; }
 
+# GLPI_VERSION: exact release, "X.Y.x" for the latest release of a branch (e.g. 12.0.x),
+# or "latest" for the latest stable release.
 resolve_version() {
-    local version="${GLPI_VERSION:-}"
-    if [ "$version" != "latest" ]; then
-        echo "$version"
-        return
-    fi
-    git ls-remote --tags --refs https://github.com/glpi-project/glpi.git 'refs/tags/11.0.*' \
+    local version="${GLPI_VERSION:-}" pattern
+    case "$version" in
+        latest) pattern='[0-9]+\.[0-9]+\.[0-9]+' ;;
+        *.x)    pattern="${version%.x}"; pattern="${pattern//./\\.}\\.[0-9]+" ;;
+        *)      echo "$version"; return ;;
+    esac
+    git ls-remote --tags --refs https://github.com/glpi-project/glpi.git \
         | sed 's#.*refs/tags/##' \
-        | grep -E '^11\.0\.[0-9]+$' \
+        | grep -E "^${pattern}\$" \
         | sort -V \
         | tail -n 1
 }
@@ -71,8 +75,8 @@ cmd_up() {
     version="$(resolve_version)"
     if [ -n "$version" ]; then
         export GLPI_VERSION="$version"
-    elif [ "${GLPI_VERSION:-}" = "latest" ]; then
-        echo "Unable to resolve the latest GLPI 11.0.x release." >&2
+    elif [ -n "${GLPI_VERSION:-}" ]; then
+        echo "Unable to resolve the GLPI release '$GLPI_VERSION'." >&2
         exit 1
     fi
 
@@ -110,7 +114,6 @@ cmd_up() {
         log "Activating the plugin..."
         in_glpi glpi-console plugin:activate "$PLUGIN_KEY" --no-interaction
     fi
-    in_glpi glpi-console cache:clear --no-interaction > /dev/null
 
     log "GLPI ready on http://localhost:${GLPI_HTTP_PORT:-8080} (login glpi / glpi), logs in docker/log/."
 }

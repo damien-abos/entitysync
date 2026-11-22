@@ -14,6 +14,8 @@ use CommonDBTM;
 use CommonGLPI;
 use Entity;
 use Glpi\Application\View\TemplateRenderer;
+use GlpiPlugin\Entitysync\Compat\ModelRightName;
+use GlpiPlugin\Entitysync\Compat\WithHistory;
 use GlpiPlugin\Entitysync\Engine\Config\ModelConfig;
 use GlpiPlugin\Entitysync\Engine\Csv\CsvReader;
 use GlpiPlugin\Entitysync\Engine\Filter\FilterEvaluator;
@@ -25,14 +27,13 @@ use Session;
  */
 class Model extends CommonDBTM
 {
-    public static $rightname = 'plugin_entitysync_model';
+    use ModelRightName;
+    use WithHistory;
 
     /** Right to apply an import (in addition to entity rights). */
     public const APPLY = 128;
 
     public const ALL_RIGHTS = READ | CREATE | UPDATE | PURGE | self::APPLY;
-
-    public $dohistory = true;
 
     private const TAB_IMPORT = 1;
     private const TAB_HISTORY = 2;

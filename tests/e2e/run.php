@@ -64,8 +64,14 @@ final class Browser
      */
     public function post(string $path, array|string $fields, bool $multipart = false): array
     {
-        if (is_array($fields) && !$multipart) {
-            $fields = http_build_query($fields);
+        if (is_array($fields)) {
+            // No token on GLPI 12 (header-based CSRF checks): the field is left out.
+            if (($fields['_glpi_csrf_token'] ?? null) === '') {
+                unset($fields['_glpi_csrf_token']);
+            }
+            if (!$multipart) {
+                $fields = http_build_query($fields);
+            }
         }
 
         return $this->request('POST', $path, $fields);
@@ -80,11 +86,11 @@ final class Browser
      */
     public function postJson(string $path, array $data, string $csrfToken): array
     {
-        $response = $this->request('POST', $path, json_encode($data), [
-            'X-Requested-With: XMLHttpRequest',
-            'Content-Type: application/json',
-            'X-Glpi-Csrf-Token: ' . $csrfToken,
-        ]);
+        $headers = ['X-Requested-With: XMLHttpRequest', 'Content-Type: application/json'];
+        if ($csrfToken !== '') {
+            $headers[] = 'X-Glpi-Csrf-Token: ' . $csrfToken;
+        }
+        $response = $this->request('POST', $path, json_encode($data), $headers);
         if ($response['status'] !== 200) {
             throw new E2EFailure("POST $path returned HTTP {$response['status']}.");
         }
@@ -93,16 +99,22 @@ final class Browser
     }
 
     /**
-     * Returns a fresh CSRF token (form tokens are single-use in GLPI).
+     * Returns a fresh CSRF token (form tokens are single-use in GLPI 11), or an empty
+     * string on GLPI 12, which has no token (it checks the Origin header).
      */
     public function csrfToken(): string
     {
         $page = $this->get('/front/central.php');
-        if (preg_match('/name="_glpi_csrf_token" value="([0-9a-f]{64})"/', $page['body'], $m) !== 1) {
-            throw new E2EFailure('No CSRF token found on the central page (not logged in?).');
+        if ($page['status'] !== 200) {
+            throw new E2EFailure("Central page returned HTTP {$page['status']} (not logged in?).");
         }
 
-        return $m[1];
+        return self::findCsrfToken($page['body']);
+    }
+
+    public static function findCsrfToken(string $html): string
+    {
+        return preg_match('/name="_glpi_csrf_token" value="([0-9a-f]{64})"/', $html, $m) === 1 ? $m[1] : '';
     }
 
     /**
@@ -138,6 +150,9 @@ final class Browser
             CURLOPT_TIMEOUT        => 300,
         ]);
         if ($method === 'POST') {
+            // Like a browser: GLPI 12 compares the Origin header with the host.
+            $headers[] = 'Origin: ' . $this->origin();
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
             curl_setopt($curl, CURLOPT_POST, true);
             curl_setopt($curl, CURLOPT_POSTFIELDS, $body);
         }
@@ -153,6 +168,14 @@ final class Browser
         ];
     }
 
+    private function origin(): string
+    {
+        $parts = parse_url($this->baseUrl);
+
+        return ($parts['scheme'] ?? 'http') . '://' . ($parts['host'] ?? '127.0.0.1')
+            . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    }
+
     /**
      * Multipart POST (file upload).
      *
@@ -162,6 +185,9 @@ final class Browser
      */
     public function upload(string $path, array $fields): array
     {
+        if (($fields['_glpi_csrf_token'] ?? null) === '') {
+            unset($fields['_glpi_csrf_token']);
+        }
         $url = $this->baseUrl . $path;
         $curl = curl_init($url);
         curl_setopt_array($curl, [
@@ -169,6 +195,7 @@ final class Browser
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_COOKIEJAR      => $this->cookieJar,
             CURLOPT_COOKIEFILE     => $this->cookieJar,
+            CURLOPT_HTTPHEADER     => ['Origin: ' . $this->origin()],
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $fields,
             CURLOPT_TIMEOUT        => 300,
@@ -472,13 +499,13 @@ final class Scenario
     {
         $this->section('Login');
         $page = $this->browser->get('/');
-        if (preg_match('/name="_glpi_csrf_token" value="([0-9a-f]{64})"/', $page['body'], $m) !== 1) {
+        if (!str_contains($page['body'], 'login_name')) {
             throw new E2EFailure('Login page not reachable at ' . (getenv('GLPI_URL') ?: 'http://127.0.0.1:8080'));
         }
         $response = $this->browser->post('/front/login.php', [
             'login_name'       => getenv('GLPI_USER') ?: 'glpi',
             'login_password'   => getenv('GLPI_PASSWORD') ?: 'glpi',
-            '_glpi_csrf_token' => $m[1],
+            '_glpi_csrf_token' => Browser::findCsrfToken($page['body']),
             'noAUTO'           => 0,
             'redirect'         => '',
         ]);
@@ -527,8 +554,24 @@ final class Scenario
             $response = $this->browser->tab('GlpiPlugin\\Entitysync\\Model', $this->modelId, 'GlpiPlugin\\Entitysync\\Model$' . $tab, $target);
             $this->assertSame(200, $response['status'], "model tab $tab");
         }
+        $this->reauthenticate('/front/profile.form.php?id=4');
         $response = $this->browser->tab('Profile', 4, 'GlpiPlugin\\Entitysync\\ProfileRights$1', '/front/profile.form.php');
         $this->assertTrue($response['status'] === 200 && str_contains($response['body'], '_plugin_entitysync_model['), 'profile rights tab');
+    }
+
+    /**
+     * GLPI 12 asks for the password again before showing sensitive items (profiles...):
+     * answers the prompt when opening the page redirects to it. No-op on GLPI 11.
+     */
+    private function reauthenticate(string $page): void
+    {
+        $response = $this->browser->get($page);
+        if (!str_contains((string) $response['location'], '/ReAuth/Prompt')) {
+            return;
+        }
+        $this->browser->get((string) $response['location']);
+        $response = $this->browser->post('/ReAuth/Verify', ['user_input' => getenv('GLPI_PASSWORD') ?: 'glpi']);
+        $this->assertSame(200, $response['status'], 're-authentication');
     }
 
     private function upload(string $fixture, bool $isFixture = true): Preview

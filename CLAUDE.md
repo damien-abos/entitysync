@@ -4,7 +4,7 @@ Context for Claude Code working on this repository.
 
 ## Project
 
-GLPI 11 plugin `entitysync`: synchronizes the GLPI entity tree below a target entity
+GLPI 11 / 12 plugin `entitysync`: synchronizes the GLPI entity tree below a target entity
 from a CSV file. An import model defines levels (key columns, name column, regex
 replacement rules, comment columns, placeholder name for empty values) and an
 AND / OR / NOT filter on rows. An upload creates an import job with a paginated
@@ -88,16 +88,23 @@ There is no Composer dependency: the unit tests use the small runner in
 - Schema changes: migration in `plugin_entitysync_install()` with GLPI's `Migration`
   API + version bump in `setup.php`.
 
-## GLPI 11 pitfalls
+## GLPI 11 / 12 pitfalls
+
+- One code base for GLPI 11.0 and 12.0; the differences live in `src/Compat/` and the
+  CI tests both (`GLPI_VERSION=12.0.x make glpi-up` after `make glpi-reset` locally).
+- GLPI 12 types the base class properties (`$rightname`, `$dohistory`): never redeclare
+  them directly, use (or add) a trait of `src/Compat/`, declared per GLPI version.
+- GLPI 12 has no CSRF tokens (header checks) and deprecates `csrf_token()`: in forms,
+  `{{ include('@entitysync/csrf_field.html.twig') }}`, never `csrf_token()` directly.
 
 - `Html::redirect()` / `Html::back()` throw; code after them does not run.
-- POST requests need a fresh single-use CSRF token (`csrf_token()` in Twig).
+- GLPI 11: POST requests need a fresh single-use CSRF token (the partial above).
 - Static assets live in `public/` and are served at `/plugins/entitysync/<file>`.
 - `forcetab` does not work for this plugin's namespaced class by itself:
   `front/model.form.php` sets the active tab explicitly.
-- Methods declared `bool` must cast `Session::haveRight()` (it returns an int).
+- Methods declared `bool` must cast `Session::haveRight()` (an int on GLPI 11).
 - `glpi_entities` has `UNIQUE (entities_id, name)`, case and accent insensitive.
-- Automatic actions in GLPI (internal) mode only run from the login page in GLPI 11:
+- Automatic actions in GLPI (internal) mode only run from the login page:
   the task is registered in CLI mode and needs the system cron.
 - `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET` shortens each execution of the task
   (`ENTITYSYNC_RUN_TIME_BUDGET=2 make glpi-up`); the CI e2e uses it to test resumption.

@@ -22,7 +22,7 @@ configuring import models. Running imports is described in the
 
 | Component | Version |
 |---|---|
-| GLPI | 11.0.x (tested with 11.0.0 and 11.0.11) |
+| GLPI | 11.0.x or 12.0.x (tested with 11.0.0, 11.0.13, 12.0.0 and 12.0.2) |
 | PHP | The versions supported by your GLPI release (8.2 or later), with the `mbstring` and `intl` extensions (already required by GLPI) |
 | Database | The one used by GLPI (MariaDB or MySQL) |
 | GLPI cron | **Run by the system** (crontab or systemd timer), see [background task](#background-task-glpi-cron): the imports are applied by a GLPI automatic action |
@@ -78,9 +78,9 @@ The menu entry is *Administration > Entity import*.
 
 Models, managed entities and history are kept.
 
-**From 1.0.x to 1.1.0**: the update adds the `glpi_plugin_entitysync_jobs` table, a
+**From 0.0.1 to 0.0.2**: the update adds the `glpi_plugin_entitysync_jobs` table, a
 `status` column to the history and the automatic action `entitysyncApply`. Since
-1.1.0, imports are applied in the background: configure GLPI's cron (next section)
+0.0.2, imports are applied in the background: configure GLPI's cron (next section)
 before the first import.
 
 ## Uninstallation
@@ -100,7 +100,7 @@ action **`entitysyncApply`** applies the queued jobs by batches:
 - the plan is recomputed from the current state of GLPI at each execution;
 - the action also removes the previews that were not applied after 24 hours.
 
-GLPI 11 only launches automatic actions in *GLPI* mode when someone displays the login
+GLPI 11 and 12 only launch automatic actions in *GLPI* mode when someone displays the login
 page, which is not enough for a background task. The action is therefore installed in
 **CLI** mode, and GLPI's cron must be run by the system every minute, as the web server
 user:
@@ -131,7 +131,7 @@ has not run for 3 minutes after the import was queued.
 | `upload_max_filesize`, `post_max_size` (PHP) | Maximum size of the CSV file. The Import tab shows the current limit. |
 | `memory_limit` (PHP) | The whole file is loaded in memory. As an order of magnitude, the engine used about 110 MB for 50,000 rows in a test (estimate, depends on the number of columns). |
 | Web server timeouts | Only the preview is computed in a web request (about 1.6 s for 1,200 rows measured on a test instance); the changes are applied by the background task, so imports are not limited by `fastcgi_read_timeout`, `request_terminate_timeout` and the like. |
-| `max_input_vars` (PHP) | No constraint since 1.1.0: the selection is sent by small AJAX calls, not as one form field per change. |
+| `max_input_vars` (PHP) | No constraint since 0.0.2: the selection is sent by small AJAX calls, not as one form field per change. |
 | `files/_plugins/entitysync` (GLPI) | Uploaded files and preview snapshots of the jobs. Must be writable by the web server **and** by the user running the cron (the same user, normally). Files are removed when the job ends. |
 
 ## Rights
@@ -312,7 +312,7 @@ so *No site* is created; line 6 has no project, so it stops at *Nantes*.
 | *This import has expired* / *This import no longer exists* | The preview was cancelled, or removed after 24 hours without being applied. Upload the file again. |
 | The import stays *Waiting for the background task* | GLPI's cron is not run by the system, or the action `entitysyncApply` is disabled or in *GLPI* mode. See [background task](#background-task-glpi-cron); the *Execute* button of the action runs it once. |
 | *Another import of this model is waiting or running* | Only one import per model runs at a time. Wait for it to end (its progress page is linked), or stop it. |
-| A file of more than 1,000 changes cannot be applied (HTTP 400) | Version 1.0.x of the plugin: update to 1.1.0 or later. |
+| A file of more than 1,000 changes cannot be applied (HTTP 400) | Version 0.0.1 of the plugin: update to 0.0.2 or later. |
 | A deletion is blocked: *Still contains...* | The entity still holds items (computers, tickets, user authorizations...). Move or delete them, then import again. |
 | A row is in error: *the name "X" is already produced by another key* | Two different keys give the same name under the same parent, which GLPI forbids. Fix the source data, or change the name column or the rules. |
 | The entity is not adopted: *already managed by another import model* | Two models target the same entities. Each entity can be managed by one model only. |

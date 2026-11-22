@@ -1,0 +1,7 @@
+{#
+ # CSRF token of a POST form: required by GLPI 11 (single-use token), not by GLPI 12,
+ # which checks the request headers and deprecates csrf_token().
+ #}
+{% if call(['GlpiPlugin\\Entitysync\\Compat\\Glpi', 'needsCsrfToken']) %}
+    <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+{% endif %}

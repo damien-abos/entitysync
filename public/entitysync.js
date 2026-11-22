@@ -586,12 +586,17 @@
     // Preview panel: paginated sections, selection kept on the server
     // ---------------------------------------------------------------------------------
 
-    function csrfToken() {
-        if (typeof window.getAjaxCsrfToken === 'function') {
-            return window.getAjaxCsrfToken() || '';
-        }
+    // Headers of a JSON POST request. GLPI 11 checks the CSRF token of the page (meta
+    // tag); GLPI 12 has no token (it checks the browser's Sec-Fetch-Site / Origin
+    // headers) and its getAjaxCsrfToken() is deprecated, so the meta tag is read directly.
+    function jsonPostHeaders() {
+        var headers = {'Content-Type': 'application/json'};
         var meta = document.querySelector('meta[property="glpi:csrf_token"]');
-        return meta ? meta.getAttribute('content') : '';
+        var token = meta ? meta.getAttribute('content') : '';
+        if (token) {
+            headers['X-Glpi-Csrf-Token'] = token;
+        }
+        return headers;
     }
 
     function format(template, first, second) {
@@ -696,7 +701,7 @@
                 payload.visible = visibleIds();
                 return fetchJson(config.selectionUrl, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': csrfToken()},
+                    headers: jsonPostHeaders(),
                     body: JSON.stringify(payload)
                 }).then(applySummary);
             }).catch(showError);

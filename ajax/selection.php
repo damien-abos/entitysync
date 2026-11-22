@@ -3,8 +3,8 @@
 /**
  * Entity Sync plugin for GLPI
  *
- * Changes the selection of an import preview (POST, JSON body, CSRF token in the
- * X-Glpi-Csrf-Token header). The selection is never posted as form fields, so its
+ * Changes the selection of an import preview (POST, JSON body; GLPI 11: CSRF token in
+ * the X-Glpi-Csrf-Token header, GLPI 12: checked on the request headers). The selection is never posted as form fields, so its
  * size is not limited by PHP's max_input_vars.
  *
  * @license GPL-3.0-or-later

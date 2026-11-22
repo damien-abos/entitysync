@@ -14,7 +14,7 @@ it. User-facing behaviour is described in the [user guide](en/user-guide.md) and
 - [Translations](#translations)
 - [Tests](#tests)
 - [Continuous integration and releases](#continuous-integration-and-releases)
-- [GLPI 11 notes](#glpi-11-notes)
+- [GLPI 11 and 12 notes](#glpi-11-and-12-notes)
 - [Conventions](#conventions)
 
 ## Development environment
@@ -40,7 +40,7 @@ dev container and the CI alike. The dev container itself only holds the tools.
 | Variable | Default | Effect |
 |---|---|---|
 | `COMPOSE` | `docker compose` | Compose command (e.g. `podman-compose`) |
-| `GLPI_VERSION` | see `docker/compose.yml` | GLPI release, or `latest` for the latest 11.0.x; `make glpi-reset` first when changing it (the database is not migrated) |
+| `GLPI_VERSION` | see `docker/compose.yml` | GLPI release, `X.Y.x` for the latest release of a branch (`11.0.x`, `12.0.x`) or `latest`; `make glpi-reset` first when changing it (the database is not migrated) |
 | `GLPI_HTTP_PORT`, `DB_PORT` | `8080`, `3306` | Published ports |
 | `ENTITYSYNC_RUN_TIME_BUDGET` | unset (50 s) | `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET`, seconds per execution of the background task |
 
@@ -163,7 +163,7 @@ the preview (operations as arrays, issues, counters) in `files/_plugins/entitysy
 jobs`, and the job keeps the selection. The preview pages and the selection changes
 are AJAX calls working on the snapshot, so nothing is posted per operation (PHP's
 `max_input_vars`, 1,000 by default, made larger selections fail with HTTP 400 in
-1.0.x). Queuing hands the job over to the automatic action, which recomputes the plan
+0.0.1). Queuing hands the job over to the automatic action, which recomputes the plan
 against the current state and applies the selection by batches.
 
 The engine (`src/Engine`) only depends on PHP and `mbstring`/`intl`. Everything that
@@ -260,7 +260,7 @@ strings too.
 | `src/ImportController.php` | `upload()` creates a draft job, stores the file, computes the plan and writes the snapshot; `show()` renders the preview of a draft or the progress page of a queued job; `page()` and `select()` serve the AJAX calls of the preview; `queue()` checks the rights, records them and queues the job; `cancel()` removes a draft, cancels a queued job or asks a running one to stop; `status()` serves the progress page |
 | `src/Job.php` | Import job: statuses (`draft`, `queued`, `running`, `cancelling`, `done`, `cancelled`, `failed`), selection, recorded rights, results; automatic action `cronEntitysyncApply()` (oldest active job first, removal of drafts older than 24 h); health of the action for the progress page |
 | `src/JobRunner.php`, `src/JobStorage.php`, `src/PlanFactory.php` | Batch application, job files, plan computation (shared by the upload and the runner) |
-| `ajax/preview.php`, `ajax/selection.php`, `ajax/job.php` | JSON endpoints: one page of a section (rendered by `templates/preview_rows.html.twig`), selection changes (JSON body, CSRF token in the `X-Glpi-Csrf-Token` header), progress of a job |
+| `ajax/preview.php`, `ajax/selection.php`, `ajax/job.php` | JSON endpoints: one page of a section (rendered by `templates/preview_rows.html.twig`), selection changes (JSON body; on GLPI 11, CSRF token in the `X-Glpi-Csrf-Token` header), progress of a job |
 | `src/GlpiGateway.php` | Loads the root subtree and the links; inspects every table with an `entities_id` column to block deletions; writes through `Entity::add/update/delete` so that GLPI rules, history, caches and hooks apply; captures the messages GLPI queues for the user and returns them as operation errors |
 | `src/ProfileRights.php` | Rights matrix tab on profiles |
 
@@ -302,7 +302,7 @@ The JSON formats of `levels` and `filter` are documented in the docblocks of
 `Engine\Config\LevelConfig` and `Engine\Filter\FilterEvaluator`.
 
 **Schema changes.** `plugin_entitysync_install()` creates the missing tables and
-applies the migrations, guarded by checks on the current schema (1.1.0 added the
+applies the migrations, guarded by checks on the current schema (0.0.2 added the
 `jobs` table and `runs.status` with `Migration::addField()`). For a new change, add the
 migration there and bump `PLUGIN_ENTITYSYNC_VERSION` so that GLPI asks for the update.
 
@@ -343,7 +343,8 @@ public function testSomething(): void
 
 ### End-to-end scenario
 
-`tests/e2e/run.php` drives a running GLPI over HTTP (login, CSRF tokens, forms,
+`tests/e2e/run.php` drives a running GLPI over HTTP (login, CSRF tokens on GLPI 11,
+`Origin` header and re-authentication on GLPI 12, forms,
 multipart upload, AJAX tabs, paginated preview, JSON selection calls) and runs GLPI's
 cron (`front/cron.php --force entitysyncApply`, in `GLPI_DIR` through the `GLPI_EXEC`
 command prefix) until each job ends,
@@ -370,7 +371,7 @@ stack of `docker/compose.yml`, so `make e2e` works as is after `make glpi-up`. F
 |---|---|
 | Lint and translations | `make lint`, `make locales-check` |
 | Unit tests | `make test` on PHP 8.2 to 8.5 |
-| E2E | Stack of `docker/compose.yml` (PHP 8.5, MariaDB 11.4) built for GLPI 11.0.0 and the latest 11.0.x, GLPI in `development` mode, background task cut after 2 s to exercise resumption; GLPI and compose logs uploaded on failure |
+| E2E | Stack of `docker/compose.yml` (PHP 8.5, MariaDB 11.4) built for the oldest and latest release of GLPI 11.0 and 12.0, GLPI in `development` mode, background task cut after 2 s to exercise resumption; GLPI and compose logs uploaded on failure |
 | Package | `tools/build-package.sh`, archive and checksum uploaded as the `entitysync-package` artifact |
 | GitHub release | On `v*` tags only: rebuilds the archive, extracts the notes of the version from `CHANGELOG.md`, creates the release with the archive and its checksum |
 
@@ -390,7 +391,31 @@ version. `.gitattributes` applies the same scope to `git archive`.
 3. `make check`, then `make e2e` in the dev container.
 4. Commit, tag `vX.Y.Z`, push the tag: the CI publishes the release.
 
-## GLPI 11 notes
+## GLPI 11 and 12 notes
+
+The plugin supports GLPI 11.0 and 12.0 with one code base. The differences are kept in
+`src/Compat/` (`Compat\Glpi` tells the running version) and covered by the CI matrix:
+
+- **Typed properties (12).** GLPI 12 declares native types on the properties of its
+  base classes (`public static string $rightname`, `public bool $dohistory`). A
+  redeclaration must repeat the type on GLPI 12 and must not have one on GLPI 11, so
+  the plugin classes take these properties from the traits of `src/Compat/`
+  (`ModelRightName`, `ProfileRightName`, `WithHistory`), declared according to the
+  running version. Add a trait there for any other redeclared base property.
+- **CSRF (12).** GLPI 12 drops the tokens: POST requests are checked on the browser's
+  `Sec-Fetch-Site` / `Origin` headers (requests with neither are accepted), and
+  `csrf_token()` / `getAjaxCsrfToken()` are deprecated (logged in development). Forms
+  include `@entitysync/csrf_field.html.twig`, which renders the token on GLPI 11
+  only; the JavaScript sends `X-Glpi-Csrf-Token` only when the page has the
+  `glpi:csrf_token` meta tag (GLPI 11).
+- **Re-authentication (12).** Sensitive items (profiles, groups, configuration...)
+  redirect to `/ReAuth/Prompt` until the password is given again (`/ReAuth/Verify`,
+  field `user_input`); the e2e scenario does it before opening the profile tab.
+- **Console noise.** `database:install`, `plugin:install` and `cache:clear` log a
+  `CRITICAL ... Error thrown while running command` entry in `php-errors.log` (GLPI's
+  own Symfony cache clearing, plugin or not, GLPI 11 and 12); the e2e scenario only
+  checks the entries written during its run, and `make glpi-up` does not run
+  `cache:clear`.
 
 Points learned while building the plugin against GLPI 11.0:
 
@@ -400,14 +425,15 @@ Points learned while building the plugin against GLPI 11.0:
   need to include `inc/includes.php`: the kernel boots GLPI before running them.
 - **`Html::redirect()` and `Html::back()` throw** a `RedirectException`: code after
   them never runs.
-- **CSRF** is checked by a kernel listener for every POST (`_glpi_csrf_token` field,
-  or `X-Glpi-Csrf-Token` header for AJAX). Tokens are single-use: render a new one in
-  every form (`csrf_token()` in Twig).
+- **CSRF (11)** is checked by a kernel listener for every POST (`_glpi_csrf_token`
+  field, or `X-Glpi-Csrf-Token` header for AJAX). Tokens are single-use: render a new
+  one in every form (`@entitysync/csrf_field.html.twig`).
 - **`forcetab`** derives the item type from the URL, which does not match a
   namespaced class served by a flat `front/model.form.php`; `front/model.form.php`
   sets the active tab explicitly.
 - **Return types.** Overridden methods of `CommonDBTM`/`CommonGLPI` and the
-  `Session::haveRight()` result (an int) must be cast where a `bool` is declared.
+  `Session::haveRight()` result (an int on GLPI 11, a bool on 12) must be cast where a
+  `bool` is declared.
 - **Entities.** `glpi_entities` has `UNIQUE (entities_id, name)` with a
   case- and accent-insensitive collation; `Entity::pre_deleteItem()` refuses to
   delete an entity with children; `Entity::post_addItem()` adds the new entity to the
@@ -422,7 +448,8 @@ Points learned while building the plugin against GLPI 11.0:
   `--allow-superuser` (fixed in later 11.0.x): run it as the web server user.
 - **AJAX.** Plugin scripts in `ajax/` are routed like `front/`; POST requests sent with
   `X-Requested-With: XMLHttpRequest` are checked against the `X-Glpi-Csrf-Token`
-  header (`getAjaxCsrfToken()` reads it from the page), and the token is kept.
+  header on GLPI 11 (the `glpi:csrf_token` meta tag of the page), and the token is
+  kept.
 - **Messages.** `CommonDBTM` methods queue user messages in
   `$_SESSION['MESSAGE_AFTER_REDIRECT']`; pass `_no_message` and capture the rest (see
   `GlpiGateway::guard()`).

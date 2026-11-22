@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace GlpiPlugin\Entitysync;
 
 use CommonDBTM;
+use GlpiPlugin\Entitysync\Compat\ModelRightName;
 
 /**
  * Link between a model key path and the GLPI entity it manages.
@@ -19,7 +20,7 @@ use CommonDBTM;
  */
 class Link extends CommonDBTM
 {
-    public static $rightname = 'plugin_entitysync_model';
+    use ModelRightName;
 
     public static function getTypeName($nb = 0)
     {

@@ -65,9 +65,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported GLPI and latest 11.0.x, built into the image of
+        # Oldest and latest release of each supported GLPI branch, built into the image of
         # docker/compose.yml (PHP 8.5, MariaDB 11.4), as in the dev container.
-        glpi: ['11.0.0', latest]
+        glpi: ['11.0.0', '11.0.x', '12.0.0', '12.0.x']
     env:
       GLPI_VERSION: ${{ matrix.glpi }}
       # Short executions of the background task, so that the e2e scenario also
