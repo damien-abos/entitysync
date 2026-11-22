@@ -200,6 +200,7 @@ the bottom. Use the arrows to reorder them.
 | Name when empty | Name of the entity created when this level is empty on a row but a deeper level is filled. Default: *No &lt;level&gt;* (for example *No site*). |
 | Name replacement rules | Regular expressions applied in order to the name (see below). |
 | Comment columns | Each column adds a `Label: value` line to the comment of the entity, in the order of the list. *Skip empty values* omits the lines whose value is empty. **Without comment columns, the plugin does not manage the comment**: existing comments are never overwritten. |
+| Entity properties | Other fields of the entities of the level, from the *Advanced information* and *Assets* tabs of an entity (see below). |
 
 **Replacement rules.** Each rule has a *pattern*, a *replacement* and optional
 *flags*. The pattern is a PCRE regular expression written **without delimiters**; the
@@ -219,6 +220,31 @@ browser, which may differ from the server for advanced syntax).
 
 A name that is empty after the rules, or longer than 255 characters, puts the row in
 error.
+
+**Entity properties.** Click *Entity properties* below a level to choose the other
+fields of its entities that the model manages: the fields of the *Advanced
+information* tab (inventory TAG, LDAP information, mail domain, LDAP directory and
+filter) and of the *Assets* tab (autofill of the financial dates, entity for software
+creation, automatic transfer model, agent base URL, automatic updates when computers
+are connected or disconnected), as in *Administration > Entities*.
+
+![Entity properties of a level](../images/en/model-properties.png)
+
+For each property:
+
+| Source | Effect |
+|---|---|
+| Not managed | The plugin never changes the field: existing entities keep their value, new entities get the GLPI default (usually *Inheritance of the parent entity*). |
+| Fixed value | The same value for every entity of the level, chosen among the values GLPI offers on the entity form (or typed, for text fields). |
+| Column of the file | Text fields only: the value of the column on the row of the entity (trimmed). An empty cell empties the field; for the agent base URL, it restores the inheritance. |
+
+A managed property is set when the entity is created, and compared at each import:
+when it differs, an update is proposed, with the old and the new value. For the
+entity created for an empty value (*No &lt;level&gt;*), fixed values apply and column
+values are empty. The entities offered for software creation are the target root
+entity and its ancestors. When a value no longer exists in GLPI (a deleted status or
+transfer model), the editor shows it as unknown and the model cannot be saved until
+another value is chosen.
 
 ### Filter
 
@@ -276,6 +302,10 @@ Model (the configuration shown in the screenshots above):
 | Organisation | `Organisation` | (key) | | `Responsable` |
 | Site | `Site` | (key) | `^SITE[-_ ]` → *(empty)*, flag `i` | |
 | Projet | `Code projet` | `Projet` | | `Code projet` (label *Code*), `Budget` |
+
+Entity properties of *Organisation*: TAG from the `Responsable` column, *Entity for
+software creation* fixed to *No change of entity*, and *User — When connecting or
+updating the relevant field* fixed to *Copy*.
 
 Filter: `Statut` *is not in the list* `Fermé`, `Annulé` **AND** (`Budget` *is greater
 than or equal to* `1000` **OR** `Budget` *is empty*).

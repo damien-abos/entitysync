@@ -70,6 +70,58 @@ final class PlannerTest extends TestCase
         $this->assertSame('ACME', $changes[1]['new']);
     }
 
+    public function testManagedPropertiesAreComparedAndUpdated(): void
+    {
+        $levels = [[
+            'label'       => 'Org',
+            'key_columns' => ['Org'],
+            'properties'  => [
+                'tag'                => ['source' => 'column', 'column' => 'Tag'],
+                'is_user_autoupdate' => ['source' => 'fixed', 'value' => '1'],
+                'ldap_dn'            => ['source' => 'fixed', 'value' => ''],
+            ],
+        ]];
+        $state = $this->state(
+            [
+                0  => ['Root', null],
+                10 => ['ACME', 0, null, ['tag' => 'T-1', 'is_user_autoupdate' => '-2', 'ldap_dn' => null, 'mail_domain' => 'x']],
+                11 => ['Globex', 0, null, ['tag' => 'G', 'is_user_autoupdate' => '1', 'ldap_dn' => '']],
+            ],
+            [Path::id(['ACME']) => 10, Path::id(['Globex']) => 11],
+        );
+        $plan = $this->plan("Org;Tag
+ACME;T-1
+Globex;G
+Initech;I
+", $this->config($levels), $state);
+
+        // Globex is up to date (NULL and empty are equal), mail_domain is not managed.
+        $this->assertSame(['ACME'], $this->summary($plan)['update']);
+        $update = $plan->ofType('update')[0];
+        $this->assertSame(
+            [['field' => 'property:is_user_autoupdate', 'old' => '-2', 'new' => '1']],
+            $update->changes,
+        );
+        $this->assertSame('is_user_autoupdate', Operation::propertyOf($update->changes[0]['field']));
+        $this->assertSame(null, Operation::propertyOf('name'));
+
+        $add = $plan->ofType('add')[0];
+        $this->assertSame(['tag' => 'I', 'is_user_autoupdate' => '1', 'ldap_dn' => ''], $add->properties);
+        $this->assertSame(['tag' => 'I', 'is_user_autoupdate' => '1', 'ldap_dn' => ''], $add->toArray()['properties']);
+    }
+
+    public function testAdoptionComparesManagedProperties(): void
+    {
+        $levels = [['label' => 'Org', 'key_columns' => ['Org'], 'properties' => ['tag' => ['source' => 'fixed', 'value' => 'T']]]];
+        $state = $this->state([0 => ['Root', null], 5 => ['ACME', 0, null, ['tag' => '']]]);
+        $plan = $this->plan("Org
+ACME
+", $this->config($levels), $state);
+
+        $link = $plan->ofType('link')[0];
+        $this->assertSame([['field' => 'property:tag', 'old' => '', 'new' => 'T']], $link->changes);
+    }
+
     public function testNoChangeProducesNoOperation(): void
     {
         $state = $this->state(

@@ -185,7 +185,7 @@ final class ImportController
      */
     public function page(array $query): array
     {
-        [$job, , $snapshot] = $this->loadDraft((int) ($query['job'] ?? 0));
+        [$job, $model, $snapshot] = $this->loadDraft((int) ($query['job'] ?? 0));
         $type = (string) ($query['type'] ?? '');
         if (!in_array($type, Selection::TYPES, true)) {
             throw new BadRequestHttpException();
@@ -200,7 +200,8 @@ final class ImportController
 
         $rows = [];
         foreach ($page['ids'] as $id) {
-            $rows[] = $snapshot['operations'][$id] + ['selected' => $selection->isSelected($id)];
+            $rows[] = self::displayRow($snapshot['operations'][$id], $model->getTargetEntityId())
+                + ['selected' => $selection->isSelected($id)];
         }
 
         $html = TemplateRenderer::getInstance()->render('@entitysync/preview_rows.html.twig', [
@@ -411,11 +412,48 @@ final class ImportController
      */
     public static function fieldLabels(): array
     {
-        return [
+        $labels = [
             Operation::FIELD_NAME    => __('Name'),
             Operation::FIELD_COMMENT => __('Comments'),
             Operation::FIELD_PARENT  => __('Parent entity', 'entitysync'),
         ];
+        foreach (EntityProperties::definitions() as $field => $definition) {
+            $labels[Operation::propertyField($field)] = $definition['label'];
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Operation of the snapshot as displayed: property values as their labels, and the
+     * properties set on a new entity.
+     *
+     * @param array<string, mixed> $op
+     *
+     * @return array<string, mixed>
+     */
+    private static function displayRow(array $op, int $targetEntityId): array
+    {
+        foreach ($op['changes'] ?? [] as $i => $change) {
+            $property = Operation::propertyOf((string) $change['field']);
+            if ($property !== null) {
+                $op['changes'][$i]['old'] = EntityProperties::format($property, $change['old'], $targetEntityId);
+                $op['changes'][$i]['new'] = EntityProperties::format($property, $change['new'], $targetEntityId);
+            }
+        }
+
+        $op['property_values'] = [];
+        if ($op['type'] === Operation::TYPE_ADD) {
+            $definitions = EntityProperties::definitions();
+            foreach ($op['properties'] ?? [] as $field => $value) {
+                $op['property_values'][] = [
+                    'label' => $definitions[$field]['label'] ?? $field,
+                    'value' => EntityProperties::format((string) $field, (string) $value, $targetEntityId),
+                ];
+            }
+        }
+
+        return $op;
     }
 
     private function loadModel(int $id): Model

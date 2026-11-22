@@ -370,6 +370,9 @@ final class Scenario
             'Globex > Nantes'                    => null,
         ]);
         $this->assertLastRun(['nb_added' => 8, 'nb_failed' => 0, 'nb_skipped' => 0]);
+        $this->assertProperties('ACME', ['tag' => 'Alice', 'is_user_autoupdate' => '1', 'entities_strategy_software' => '-10']);
+        $this->assertProperties('Globex', ['tag' => 'Bob', 'is_user_autoupdate' => '1', 'entities_strategy_software' => '-10']);
+        $this->assertProperties('ACME > Paris', ['tag' => '', 'is_user_autoupdate' => '-2', 'entities_strategy_software' => '-2']);
 
         $this->section('Re-import of the same file');
         $preview = $this->upload('01-initial.csv');
@@ -400,6 +403,7 @@ final class Scenario
             'Globex > Nantes'                => null,
             'Initech'                        => 'Responsable: Carol',
         ]);
+        $this->assertProperties('ACME', ['tag' => 'Alice Martin', 'is_user_autoupdate' => '1', 'entities_strategy_software' => '-10']);
         $this->assertSame($unmanagedId, $this->entityId('Initech'), 'the existing entity was adopted, not recreated');
         $this->assertLastRun(['nb_added' => 1, 'nb_linked' => 1, 'nb_updated' => 2, 'nb_deleted' => 2, 'nb_failed' => 0]);
 
@@ -543,6 +547,24 @@ final class Scenario
             '_glpi_csrf_token' => $this->browser->csrfToken(),
         ]);
         $this->assertSame(3, (int) $this->scalar('SELECT JSON_LENGTH(levels) FROM glpi_plugin_entitysync_models WHERE id = ?', [$this->modelId]), 'invalid configuration rejected');
+
+        // A list-of-choices property cannot come from a column, nor take an unknown value.
+        $levels = (string) $this->scalar('SELECT levels FROM glpi_plugin_entitysync_models WHERE id = ?', [$this->modelId]);
+        foreach (
+            [
+                ['is_user_autoupdate' => ['source' => 'column', 'column' => 'Statut']],
+                ['transfers_id' => ['source' => 'fixed', 'value' => '999999']],
+                ['not_a_field' => ['source' => 'fixed', 'value' => '1']],
+            ] as $properties
+        ) {
+            $this->browser->post('/plugins/entitysync/front/model.form.php', [
+                'id'               => $this->modelId,
+                'levels_json'      => json_encode([['label' => 'X', 'key_columns' => ['Organisation'], 'properties' => $properties]]),
+                'update'           => 1,
+                '_glpi_csrf_token' => $this->browser->csrfToken(),
+            ]);
+        }
+        $this->assertSame($levels, (string) $this->scalar('SELECT levels FROM glpi_plugin_entitysync_models WHERE id = ?', [$this->modelId]), 'invalid entity properties rejected');
     }
 
     private function checkModelScreens(): void
@@ -719,6 +741,20 @@ final class Scenario
             'purge'            => 1,
             '_glpi_csrf_token' => $this->browser->csrfToken(),
         ]);
+    }
+
+    /**
+     * Checks entity fields managed as properties (NULL read as an empty string).
+     *
+     * @param array<string, string> $expected column => value
+     */
+    private function assertProperties(string $relativePath, array $expected): void
+    {
+        $actual = [];
+        foreach (array_keys($expected) as $column) {
+            $actual[$column] = (string) $this->scalar("SELECT `$column` FROM glpi_entities WHERE id = ?", [$this->entityId($relativePath)]);
+        }
+        $this->assertSame($expected, $actual, "properties of $relativePath");
     }
 
     private function entityId(string $relativePath): int

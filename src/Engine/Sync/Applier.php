@@ -162,7 +162,7 @@ final class Applier
         switch ($op->type) {
             case Operation::TYPE_ADD:
                 $parentId = $this->parentId($op, $created);
-                $entityId = $this->gateway->createEntity($op->name, $op->comment, $parentId);
+                $entityId = $this->gateway->createEntity($op->name, $op->comment, $parentId, $op->properties);
                 $created[$op->pathId] = $entityId;
                 $this->gateway->saveLink($op->pathId, $entityId);
 
@@ -203,12 +203,17 @@ final class Applier
     /**
      * @param array<string, int> $created
      *
-     * @return array{name?: string, comment?: string, entities_id?: int}
+     * @return array<string, string|int>
      */
     private function fieldsFromChanges(Operation $op, array $created): array
     {
         $fields = [];
         foreach ($op->changes as $change) {
+            $property = Operation::propertyOf($change['field']);
+            if ($property !== null) {
+                $fields[$property] = $op->properties[$property] ?? (string) $change['new'];
+                continue;
+            }
             switch ($change['field']) {
                 case Operation::FIELD_NAME:
                     $fields['name'] = $op->name;

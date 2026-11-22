@@ -46,7 +46,8 @@ There is no Composer dependency: the unit tests use the small runner in
 - `src/Model.php` (model item, form, tabs, JS labels), `src/ImportController.php`
   (upload → preview → queue → status, AJAX handlers), `src/Job.php` (job + automatic
   action), `src/JobRunner.php` (batches), `src/JobStorage.php`, `src/PlanFactory.php`,
-  `src/Link.php`, `src/Run.php`, `src/ProfileRights.php`.
+  `src/Link.php`, `src/Run.php`, `src/ProfileRights.php`, `src/EntityProperties.php`
+  (entity fields a level can manage: Advanced information and Assets tabs).
 - `ajax/` JSON endpoints (preview pages, selection, job status).
 - `setup.php` (version, hooks), `hook.php` (install/uninstall, schema).
 - `front/` controllers, `templates/` Twig (`@entitysync/...`), `public/` JS/CSS.

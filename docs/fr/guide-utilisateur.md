@@ -83,7 +83,7 @@ ligne (les 200 premières sont listées, le total est toujours affiché) :
 |---|---|---|
 | Ajouts | Entités à créer. Leur commentaire est affiché. | Oui |
 | Rattachements à des entités existantes | Entités qui existent déjà avec le même nom sous le parent attendu, pas encore gérées par ce modèle : le plugin propose de les rattacher (plutôt que de créer un doublon) et affiche les champs modifiés. Sert aussi quand la clé d'une entité gérée a changé mais pas son nom. | Oui |
-| Modifications | Entités gérées dont le nom, le commentaire ou le parent diffèrent du fichier. L'ancienne valeur est barrée, la nouvelle est en vert. | Oui |
+| Modifications | Entités gérées dont le nom, le commentaire, les propriétés d'entité gérées par le modèle ou le parent diffèrent du fichier. L'ancienne valeur est barrée, la nouvelle est en vert. | Oui |
 | Suppressions | Entités gérées absentes du fichier (après filtrage). La suppression est définitive. | **Non** |
 
 Une modification peut être **bloquée** : sa case est désactivée et la raison est
@@ -164,15 +164,17 @@ premier niveau jusqu'à l'entité (par exemple `ACME > SITE-Paris > P001`).
 
 | Dans le fichier | Dans GLPI | Modification proposée |
 |---|---|---|
-| Chemin de clés déjà géré | Même nom, commentaire et parent | Aucune |
-| Chemin de clés déjà géré | Nom, commentaire ou parent différents | Modification (le plugin remet aussi en place une entité déplacée à la main) |
+| Chemin de clés déjà géré | Même nom, commentaire, propriétés gérées et parent | Aucune |
+| Chemin de clés déjà géré | Nom, commentaire, une propriété gérée ou parent différents | Modification (le plugin remet aussi en place une entité déplacée à la main) |
 | Nouveau chemin de clés | Une entité de même nom existe sous le parent attendu | Rattachement |
 | Nouveau chemin de clés | Aucune entité de ce nom | Ajout |
 | Chemin de clés disparu (ou filtré) | Entité gérée | Suppression (non cochée par défaut, bloquée si l'entité n'est pas vide) |
 
 La comparaison des noms ignore la casse et les accents, comme GLPI. Les commentaires
 ne sont gérés que si le modèle définit des colonnes de commentaire ; sinon les
-commentaires de GLPI restent tels quels.
+commentaires de GLPI restent tels quels. De même, seules les propriétés d'entité
+choisies dans le modèle (champs *Informations avancées* et *Parc*) sont comparées et
+mises à jour ; l'aperçu affiche leurs valeurs comme sur le formulaire de l'entité.
 
 **Valeurs vides.** Quand un niveau est vide alors qu'un niveau inférieur est renseigné
 (un projet sans site), le plugin crée une entité intermédiaire nommée d'après le

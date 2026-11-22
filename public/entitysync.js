@@ -82,12 +82,14 @@
     // Levels editor
     // ---------------------------------------------------------------------------------
 
-    function LevelsEditor(container, input, columnsListId, labels, readOnly) {
+    function LevelsEditor(container, input, columnsListId, labels, readOnly, catalog) {
         this.container = container;
         this.input = input;
         this.columnsListId = columnsListId;
         this.labels = labels;
         this.readOnly = readOnly;
+        // Entity properties a level can manage: [{group, label, fields: [{field, section, label, type, options}]}]
+        this.catalog = Array.isArray(catalog) ? catalog : [];
         try {
             this.levels = JSON.parse(input.value || '[]');
         } catch (e) {
@@ -109,7 +111,9 @@
             name_rules: Array.isArray(level.name_rules) ? level.name_rules : [],
             comment_columns: Array.isArray(level.comment_columns) ? level.comment_columns : [],
             comment_skip_empty: level.comment_skip_empty === undefined ? true : !!level.comment_skip_empty,
-            empty_label: level.empty_label || ''
+            empty_label: level.empty_label || '',
+            properties: level.properties && typeof level.properties === 'object' && !Array.isArray(level.properties)
+                ? Object.assign({}, level.properties) : {}
         };
     };
 
@@ -122,7 +126,8 @@
                 name_rules: level.name_rules.filter(function (r) { return (r.pattern || '') !== ''; }),
                 comment_columns: level.comment_columns.filter(function (c) { return (c.column || '').trim() !== ''; }),
                 comment_skip_empty: level.comment_skip_empty,
-                empty_label: level.empty_label.trim()
+                empty_label: level.empty_label.trim(),
+                properties: level.properties
             };
         });
         this.input.value = JSON.stringify(data);
@@ -230,7 +235,8 @@
                     el('label', {class: 'form-label mb-0', text: L.comment_columns}),
                     helpText(L.comment_columns_help),
                     this.renderCommentColumns(level)
-                ])
+                ]),
+                this.catalog.length ? el('div', {class: 'col-12'}, [this.renderProperties(level)]) : null
             ])
         ]);
 
@@ -333,6 +339,107 @@
         }
 
         return wrapper;
+    };
+
+    // Entity properties: one row per field, with its source (not managed, fixed value,
+    // column of the file for text fields) and its value. The server validates them.
+    LevelsEditor.prototype.renderProperties = function (level) {
+        var self = this;
+        var L = this.labels;
+        var count = Object.keys(level.properties).length;
+
+        var details = el('details', {class: 'entitysync-properties', open: level._propertiesOpen ? true : null,
+            onToggle: function () { level._propertiesOpen = details.open; }}, [
+            el('summary', {class: 'form-label mb-1'}, [
+                el('i', {class: 'ti ti-chevron-right me-1'}),
+                L.properties,
+                count ? el('span', {class: 'badge bg-primary-lt ms-2', text: L.properties_count.replace('%d', count)}) : null
+            ]),
+            helpText(L.properties_help)
+        ]);
+
+        this.catalog.forEach(function (group) {
+            details.appendChild(el('h4', {class: 'mt-2 mb-1', text: group.label}));
+            var table = el('table', {class: 'table table-sm table-borderless mb-1'});
+            var tbody = el('tbody');
+            var section = null;
+            group.fields.forEach(function (def) {
+                if (def.section !== section) {
+                    section = def.section;
+                    tbody.appendChild(el('tr', {}, [el('td', {colspan: 3, class: 'text-muted small pt-2', text: section})]));
+                }
+                tbody.appendChild(self.renderProperty(level, def));
+            });
+            table.appendChild(tbody);
+            details.appendChild(table);
+        });
+
+        return details;
+    };
+
+    LevelsEditor.prototype.renderProperty = function (level, def) {
+        var self = this;
+        var L = this.labels;
+        var spec = level.properties[def.field] || null;
+        var source = spec ? spec.source : '';
+
+        var sources = [['', L.not_managed], ['fixed', L.fixed_value]];
+        if (def.type === 'text') {
+            sources.push(['column', L.from_column]);
+        }
+        var sourceSelect = el('select', {
+            class: 'form-select form-select-sm',
+            disabled: self.readOnly,
+            'aria-label': def.label,
+            onChange: function () {
+                var value = sourceSelect.value;
+                if (value === '') {
+                    delete level.properties[def.field];
+                } else if (value === 'column') {
+                    level.properties[def.field] = {source: 'column', column: ''};
+                } else {
+                    level.properties[def.field] = {source: 'fixed', value: self.defaultValue(def)};
+                }
+                self.changed(true);
+            }
+        }, sources.map(function (s) { return el('option', {value: s[0], text: s[1]}); }));
+        sourceSelect.value = source;
+
+        var valueCell = null;
+        if (source === 'column') {
+            valueCell = this.columnInput(spec.column || '', function (v) { spec.column = v.trim(); });
+        } else if (source === 'fixed' && def.type === 'text') {
+            valueCell = this.textInput(spec.value || '', function (v) { spec.value = v; }, {'aria-label': def.label});
+        } else if (source === 'fixed') {
+            var options = def.options.slice();
+            var known = options.some(function (o) { return o[0] === String(spec.value); });
+            if (!known) {
+                options.unshift([String(spec.value || ''), spec.value ? sprintf(L.unknown_value, spec.value) : L.choose]);
+            }
+            var select = el('select', {
+                class: 'form-select form-select-sm',
+                disabled: self.readOnly,
+                'aria-label': def.label,
+                onChange: function () { spec.value = select.value; self.changed(false); }
+            }, options.map(function (o) { return el('option', {value: o[0], text: o[1]}); }));
+            select.value = String(spec.value || '');
+            valueCell = select;
+        }
+
+        return el('tr', {}, [
+            el('td', {class: 'align-middle', style: 'width: 40%', text: def.label}),
+            el('td', {style: 'width: 13rem; min-width: 13rem'}, [sourceSelect]),
+            el('td', {}, [valueCell])
+        ]);
+    };
+
+    // Initial fixed value: inheritance when GLPI offers it, otherwise the first choice.
+    LevelsEditor.prototype.defaultValue = function (def) {
+        if (def.type === 'text' || !def.options.length) {
+            return '';
+        }
+        var inherit = def.options.filter(function (o) { return o[0] === '-2'; });
+        return inherit.length ? inherit[0][0] : def.options[0][0];
     };
 
     LevelsEditor.prototype.renderCommentColumns = function (level) {
@@ -869,7 +976,8 @@
                 document.getElementById(options.levelsInput),
                 options.columnsList,
                 options.labels,
-                options.readOnly
+                options.readOnly,
+                options.properties
             );
             new FilterEditor(
                 document.getElementById(options.filterContainer),

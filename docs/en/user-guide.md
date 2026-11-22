@@ -79,7 +79,7 @@ are listed, the total is always shown):
 |---|---|---|
 | Additions | Entities to create. Their comment is shown. | Yes |
 | Links to existing entities | Entities that already exist with the same name under the expected parent, not managed yet by this model: the plugin proposes to adopt them (instead of creating a duplicate) and shows the field changes. Also used when the key of a managed entity changed but its name did not. | Yes |
-| Updates | Managed entities whose name, comment or parent differ from the file. The old value is struck through, the new one is shown in green. | Yes |
+| Updates | Managed entities whose name, comment, entity properties managed by the model or parent differ from the file. The old value is struck through, the new one is shown in green. | Yes |
 | Deletions | Managed entities that are no longer in the file (after filtering). Deletion is permanent. | **No** |
 
 A change can be **blocked**: its checkbox is disabled and the reason is shown in red.
@@ -154,14 +154,17 @@ level down to the entity (for example `ACME > SITE-Paris > P001`).
 
 | In the file | In GLPI | Proposed change |
 |---|---|---|
-| Key path already managed | Same name, comment and parent | Nothing |
-| Key path already managed | Name, comment or parent differ | Update (the plugin also puts back an entity that was moved by hand) |
+| Key path already managed | Same name, comment, managed properties and parent | Nothing |
+| Key path already managed | Name, comment, a managed property or parent differ | Update (the plugin also puts back an entity that was moved by hand) |
 | New key path | An entity with the same name exists under the expected parent | Link (adoption) |
 | New key path | No such entity | Addition |
 | Key path no longer present (or filtered out) | Managed entity | Deletion (not selected by default, blocked when the entity is not empty) |
 
 Name comparisons ignore case and accents, as GLPI does. Comments are only managed
 when the model defines comment columns; otherwise GLPI comments are left as they are.
+Likewise, only the entity properties chosen in the model (*Advanced information* and
+*Assets* fields) are compared and updated; the preview shows their values as on the
+entity form.
 
 **Empty values.** When a level is empty but a deeper level is filled (a project with
 no site), the plugin creates an intermediate entity named after the level, for

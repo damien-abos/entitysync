@@ -84,3 +84,19 @@
     max-height: 70vh;
     overflow-y: auto;
 }
+
+/* Entity properties of a level (collapsible) */
+.entitysync-properties > summary {
+    cursor: pointer;
+    list-style: none;
+}
+.entitysync-properties > summary::-webkit-details-marker {
+    display: none;
+}
+.entitysync-properties > summary .ti-chevron-right {
+    display: inline-block;
+    transition: transform 0.15s;
+}
+.entitysync-properties[open] > summary .ti-chevron-right {
+    transform: rotate(90deg);
+}

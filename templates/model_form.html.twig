@@ -45,6 +45,7 @@
     </datalist>
 
     <script type="application/json" id="es-labels-{{ rand }}">{{ js_labels|json_encode|raw }}</script>
+    <script type="application/json" id="es-properties-{{ rand }}">{{ properties|json_encode|raw }}</script>
     <script>
         (function () {
             var start = function () {
@@ -55,6 +56,7 @@
                     filterInput: 'es-filter-json-{{ rand }}',
                     columnsList: 'es-columns-{{ rand }}',
                     labels: JSON.parse(document.getElementById('es-labels-{{ rand }}').textContent),
+                    properties: JSON.parse(document.getElementById('es-properties-{{ rand }}').textContent),
                     readOnly: {{ (item.isNewItem() ? item.canCreate() : item.can(item.getID(), constant('UPDATE'))) ? 'false' : 'true' }}
                 });
             };

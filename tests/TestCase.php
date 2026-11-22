@@ -85,7 +85,8 @@ abstract class TestCase
     /**
      * Builds an existing state from a compact description.
      *
-     * @param array<int, array{0: string, 1: int|null, 2?: string|null}> $entities id => [name, parent id, comment]
+     * @param array<int, array{0: string, 1: int|null, 2?: string|null, 3?: array<string, string|null>}> $entities
+     *        id => [name, parent id, comment, properties]
      * @param array<string, int> $links path id => entity id
      */
     protected function state(array $entities, array $links = [], array $foreign = []): ExistingState
@@ -98,6 +99,7 @@ abstract class TestCase
                 'comment'      => $entity[2] ?? null,
                 'parent_id'    => $entity[1],
                 'completename' => '',
+                'properties'   => $entity[3] ?? [],
             ];
         }
         // Compute complete names.

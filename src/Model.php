@@ -146,6 +146,7 @@ class Model extends CommonDBTM
                 '|'    => __('Pipe (|)', 'entitysync'),
             ],
             'js_labels'     => self::jsLabels(),
+            'properties'    => EntityProperties::catalog((int) ($this->fields['entities_id_target'] ?? 0)),
         ]);
 
         return true;
@@ -218,6 +219,10 @@ class Model extends CommonDBTM
                 self::defaultEmptyLabel(...),
             );
             $errors = $config->validate();
+            if ($levels !== null) {
+                $target = (int) ($input['entities_id_target'] ?? $this->fields['entities_id_target'] ?? 0);
+                $errors = array_merge($errors, EntityProperties::validate($levels, $target));
+            }
             if ($errors !== []) {
                 foreach ($errors as $error) {
                     Session::addMessageAfterRedirect(htmlescape($error), false, ERROR);
@@ -491,6 +496,14 @@ class Model extends CommonDBTM
             'no_match'           => __('(no change)', 'entitysync'),
             'default_empty'      => __('No %s', 'entitysync'),
             'regex_test_note'    => __('Preview computed by your browser; the server uses PCRE, results may differ for advanced syntax.', 'entitysync'),
+            'properties'         => __('Entity properties', 'entitysync'),
+            'properties_help'    => __('Other fields of the entities of this level. A property not managed is left as it is on existing entities (GLPI default on new ones); a managed one is set on new entities and updated on existing ones.', 'entitysync'),
+            'properties_count'   => __('%d managed', 'entitysync'),
+            'not_managed'        => __('Not managed', 'entitysync'),
+            'fixed_value'        => __('Fixed value', 'entitysync'),
+            'from_column'        => __('Column of the file', 'entitysync'),
+            'choose'             => __('Choose a value', 'entitysync'),
+            'unknown_value'      => __('Unknown value (%s)', 'entitysync'),
         ];
     }
 }

@@ -207,6 +207,7 @@ vers le bas. Les flèches permettent de les réordonner.
 | Nom si vide | Nom de l'entité créée quand ce niveau est vide sur une ligne alors qu'un niveau inférieur est renseigné. Par défaut : *Sans &lt;niveau&gt;* (par exemple *Sans site*). |
 | Règles de remplacement du nom | Expressions régulières appliquées dans l'ordre au nom (voir ci-dessous). |
 | Colonnes du commentaire | Chaque colonne ajoute une ligne `Libellé: valeur` au commentaire de l'entité, dans l'ordre de la liste. *Ignorer les valeurs vides* omet les lignes dont la valeur est vide. **Sans colonne de commentaire, le plugin ne gère pas le commentaire** : les commentaires existants ne sont jamais écrasés. |
+| Propriétés des entités | Autres champs des entités du niveau, issus des onglets *Informations avancées* et *Parc* d'une entité (voir ci-dessous). |
 
 **Règles de remplacement.** Chaque règle a un *motif*, un *remplacement* et des
 *options* facultatives. Le motif est une expression régulière PCRE écrite **sans
@@ -263,6 +264,33 @@ Le modèle est validé à l'enregistrement : colonnes clés manquantes, expressi
 régulières invalides ou conditions incomplètes sont signalées et le modèle n'est pas
 enregistré. Les noms de colonnes sont vérifiés par rapport au fichier à chaque import.
 
+**Propriétés des entités.** Cliquez sur *Propriétés des entités* sous un niveau pour
+choisir les autres champs de ses entités que le modèle gère : ceux de l'onglet
+*Informations avancées* (TAG d'inventaire, information LDAP, domaine de messagerie,
+annuaire et filtre LDAP) et de l'onglet *Parc* (remplissage automatique des dates
+financières, entité de création des logiciels, modèle de transfert automatique, URL
+de base de l'agent, mises à jour automatiques à la connexion ou à la déconnexion des
+ordinateurs), comme dans *Administration > Entités*.
+
+![Propriétés des entités d'un niveau](../images/fr/model-properties.png)
+
+Pour chaque propriété :
+
+| Source | Effet |
+|---|---|
+| Non gérée | Le plugin ne modifie jamais le champ : les entités existantes gardent leur valeur, les nouvelles reçoivent la valeur par défaut de GLPI (en général *Héritage de l'entité parente*). |
+| Valeur fixe | La même valeur pour toutes les entités du niveau, choisie parmi les valeurs que GLPI propose sur le formulaire de l'entité (ou saisie, pour les champs texte). |
+| Colonne du fichier | Champs texte uniquement : la valeur de la colonne sur la ligne de l'entité (sans les espaces de début et de fin). Une cellule vide vide le champ ; pour l'URL de base de l'agent, elle rétablit l'héritage. |
+
+Une propriété gérée est renseignée à la création de l'entité, puis comparée à chaque
+import : si elle diffère, une modification est proposée, avec l'ancienne et la
+nouvelle valeur. Pour l'entité créée pour une valeur vide (*Sans &lt;niveau&gt;*), les
+valeurs fixes s'appliquent et les valeurs de colonne sont vides. Les entités
+proposées pour la création des logiciels sont l'entité racine cible et ses
+ascendantes. Quand une valeur n'existe plus dans GLPI (statut ou modèle de transfert
+supprimé), l'éditeur l'affiche comme inconnue et le modèle ne peut pas être
+enregistré tant qu'une autre valeur n'est pas choisie.
+
 ## Exemple complet
 
 Fichier `projets.csv` :
@@ -284,6 +312,11 @@ Modèle (la configuration visible sur les captures ci-dessus) :
 | Organisation | `Organisation` | (clé) | | `Responsable` |
 | Site | `Site` | (clé) | `^SITE[-_ ]` → *(vide)*, option `i` | |
 | Projet | `Code projet` | `Projet` | | `Code projet` (libellé *Code*), `Budget` |
+
+Propriétés des entités d'*Organisation* : TAG issu de la colonne `Responsable`,
+*Entité de création des logiciels* fixée à *Pas de changement d'entité*, et
+*Utilisateur — Lors de la connexion ou de la mise à jour du champ concerné* fixé à
+*Copier*.
 
 Filtre : `Statut` *n'est pas dans la liste* `Fermé`, `Annulé` **ET** (`Budget` *est
 supérieur ou égal à* `1000` **OU** `Budget` *est vide*).

@@ -33,13 +33,13 @@ final class MemoryGateway implements GatewayInterface
     private int $nextId = 100;
     private int $nextLink = 1;
 
-    public function createEntity(string $name, ?string $comment, int $parentId): int
+    public function createEntity(string $name, ?string $comment, int $parentId, array $properties = []): int
     {
         if (in_array($name, $this->failOn, true)) {
             throw new \RuntimeException('Simulated failure');
         }
         $id = $this->nextId++;
-        $this->entities[$id] = ['id' => $id, 'name' => $name, 'comment' => $comment, 'parent_id' => $parentId, 'completename' => ''];
+        $this->entities[$id] = ['id' => $id, 'name' => $name, 'comment' => $comment, 'parent_id' => $parentId, 'completename' => '', 'properties' => $properties];
 
         return $id;
     }
@@ -54,6 +54,9 @@ final class MemoryGateway implements GatewayInterface
         }
         if (isset($fields['entities_id'])) {
             $this->entities[$entityId]['parent_id'] = $fields['entities_id'];
+        }
+        foreach (array_diff_key($fields, ['name' => 1, 'comment' => 1, 'entities_id' => 1]) as $field => $value) {
+            $this->entities[$entityId]['properties'][$field] = (string) $value;
         }
     }
 
@@ -116,6 +119,36 @@ final class ApplierTest extends TestCase
         $gateway->entities[0] = ['id' => 0, 'name' => 'Root', 'comment' => null, 'parent_id' => null, 'completename' => ''];
 
         return $gateway;
+    }
+
+    public function testPropertiesAreSetOnCreationAndUpdatedOnChange(): void
+    {
+        $gateway = $this->gateway();
+        $levels = [[
+            'label'       => 'Organisation',
+            'key_columns' => ['Organisation'],
+            'properties'  => [
+                'tag'                => ['source' => 'column', 'column' => 'Tag'],
+                'is_user_autoupdate' => ['source' => 'fixed', 'value' => '1'],
+            ],
+        ]];
+        $csv = "Organisation;Tag\nACME;T-1\n";
+
+        $plan = $this->plan($csv, $this->config($levels), $gateway->state());
+        (new Applier($gateway))->apply($plan, array_keys($plan->operations));
+        $acme = array_values(array_filter($gateway->entities, static fn (array $e): bool => $e['name'] === 'ACME'))[0];
+        $this->assertSame(['tag' => 'T-1', 'is_user_autoupdate' => '1'], $acme['properties']);
+
+        // Same file: nothing to do.
+        $this->assertSame([], $this->plan($csv, $this->config($levels), $gateway->state())->operations);
+
+        // New tag and fixed value: one update with the two property fields only.
+        $levels[0]['properties']['is_user_autoupdate']['value'] = '0';
+        $plan = $this->plan("Organisation;Tag\nACME;T-2\n", $this->config($levels), $gateway->state());
+        $report = (new Applier($gateway))->apply($plan, array_keys($plan->operations));
+        $this->assertSame(1, $report['counts']['update']);
+        $this->assertSame(['tag' => 'T-2', 'is_user_autoupdate' => '0'], $gateway->entities[$acme['id']]['properties']);
+        $this->assertSame('ACME', $gateway->entities[$acme['id']]['name']);
     }
 
     public function testFullApplyThenReimportIsIdempotent(): void

@@ -54,7 +54,7 @@ final class GlpiGateway implements GatewayInterface
         $entities = [];
         foreach (array_chunk($ids, 1000) as $chunk) {
             $iterator = $DB->request([
-                'SELECT' => ['id', 'name', 'comment', 'entities_id', 'completename'],
+                'SELECT' => array_merge(['id', 'name', 'comment', 'entities_id', 'completename'], EntityProperties::dbColumns()),
                 'FROM'   => Entity::getTable(),
                 'WHERE'  => ['id' => $chunk],
             ]);
@@ -65,6 +65,7 @@ final class GlpiGateway implements GatewayInterface
                     'comment'      => $row['comment'] !== null ? (string) $row['comment'] : null,
                     'parent_id'    => $row['entities_id'] !== null && (int) $row['id'] !== 0 ? (int) $row['entities_id'] : null,
                     'completename' => (string) $row['completename'],
+                    'properties'   => EntityProperties::fromEntityRow($row),
                 ];
             }
         }
@@ -131,10 +132,10 @@ final class GlpiGateway implements GatewayInterface
         return $reasons;
     }
 
-    public function createEntity(string $name, ?string $comment, int $parentId): int
+    public function createEntity(string $name, ?string $comment, int $parentId, array $properties = []): int
     {
         $entity = new Entity();
-        $input = [
+        $input = EntityProperties::toEntityInput($properties) + [
             'name'        => $name,
             'entities_id' => $parentId,
             '_no_message' => true,
@@ -162,7 +163,10 @@ final class GlpiGateway implements GatewayInterface
             throw new \RuntimeException(__('The entity no longer exists.', 'entitysync'));
         }
 
-        $ok = $this->guard(static fn () => $entity->update(['id' => $entityId, '_no_message' => true] + $fields));
+        $core = array_intersect_key($fields, ['name' => true, 'comment' => true, 'entities_id' => true]);
+        $input = ['id' => $entityId, '_no_message' => true] + $core
+            + EntityProperties::toEntityInput(array_map('strval', array_diff_key($fields, $core)));
+        $ok = $this->guard(static fn () => $entity->update($input));
         if (!$ok) {
             throw new \RuntimeException($this->lastError ?: __('The entity could not be updated.', 'entitysync'));
         }

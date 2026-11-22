@@ -19,13 +19,15 @@ interface GatewayInterface
 {
     /**
      * Creates an entity and returns its id.
+     *
+     * @param array<string, string> $properties Other entity fields (field => value).
      */
-    public function createEntity(string $name, ?string $comment, int $parentId): int;
+    public function createEntity(string $name, ?string $comment, int $parentId, array $properties = []): int;
 
     /**
      * Updates an entity.
      *
-     * @param array{name?: string, comment?: string, entities_id?: int} $fields
+     * @param array<string, string|int> $fields `name`, `comment`, `entities_id` and entity properties.
      */
     public function updateEntity(int $entityId, array $fields): void;
 
