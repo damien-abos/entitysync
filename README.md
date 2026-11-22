@@ -4,8 +4,8 @@ Synchronize the GLPI entity tree below a target entity from a CSV file. Every
 addition, link, update and deletion is shown in a preview panel and applied only
 when selected.
 
-- **GLPI**: 11.0.x (tested with 11.0.0 and 11.0.11)
-- **PHP**: 8.2+ (as required by GLPI 11)
+- **GLPI**: 11.0.x or 12.0.x (tested with 11.0.0, 11.0.13, 12.0.0 and 12.0.2)
+- **PHP**: as required by GLPI (8.2+ for GLPI 11, 8.3+ for GLPI 12)
 - **License**: GPL-3.0-or-later
 
 ![Preview of an import](docs/images/en/preview-changes.png)
@@ -59,12 +59,14 @@ The menu entry is *Administration > Entity import*. See the
 
 ## Development
 
-Open the repository in its dev container: GLPI and the plugin are installed
-automatically and served on <http://localhost:8080> (`glpi` / `glpi`).
+Open the repository in its dev container: GLPI and MariaDB run in a Docker Compose
+stack (`docker/compose.yml`) started with the container, with the plugin installed,
+on <http://localhost:8080> (`glpi` / `glpi`).
 
 ```sh
 make check      # lint, unit tests, translation checks
-make e2e        # end-to-end scenario against the running GLPI
+make glpi-up    # (re)start GLPI and install the plugin (any Docker host)
+make e2e        # end-to-end scenario against the GLPI stack
 make package    # deployable archive in dist/
 ```
 

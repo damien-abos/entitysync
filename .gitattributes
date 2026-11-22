@@ -4,6 +4,7 @@
 
 # Files left out of `git archive` (same scope as tools/build-package.sh)
 /.devcontainer export-ignore
+/docker export-ignore
 /.github export-ignore
 /.editorconfig export-ignore
 /.gitattributes export-ignore

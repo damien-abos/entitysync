@@ -12,6 +12,7 @@ namespace GlpiPlugin\Entitysync;
 
 use CommonDBTM;
 use CronTask;
+use GlpiPlugin\Entitysync\Compat\ModelRightName;
 use Session;
 
 /**
@@ -23,7 +24,7 @@ use Session;
  */
 class Job extends CommonDBTM
 {
-    public static $rightname = 'plugin_entitysync_model';
+    use ModelRightName;
 
     public const STATUS_DRAFT = 'draft';
     public const STATUS_QUEUED = 'queued';

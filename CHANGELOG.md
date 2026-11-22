@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.3
+
+- **GLPI 12.0.x support**, in addition to GLPI 11.0.x, with the same package: the
+  plugin adapts to the typed properties of GLPI 12 and to its CSRF protection based on
+  request headers (no more tokens).
+- **Fix**: two imports of the same model applied at the same moment could both be
+  queued; the check is now made under a database lock.
+- Documentation: the upgrade notes referred to versions 1.0.x / 1.1.0 instead of
+  0.0.1 / 0.0.2.
+- Development: GLPI and MariaDB now run in a Docker Compose stack (`docker/`, GLPI on
+  Alpine with Apache and PHP-FPM 8.5, MariaDB 11.4), started by `make glpi-up`. The dev
+  container is reduced to the tools, with the docker-in-docker feature; the CI runs
+  the end-to-end scenario on the same stack, built for the oldest and latest releases
+  of GLPI 11.0 and 12.0. `tools/install-glpi.sh` and `make glpi-install` are removed.
+
 ## 0.0.2
 
 - **Fix**: applying a preview of more than about 1,000 operations failed with HTTP 400,

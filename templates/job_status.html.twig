@@ -91,7 +91,7 @@
                     <form method="post" action="{{ action }}" class="d-inline" data-es-job-cancel
                           onsubmit="return window.confirm({{ __('Stop this import? The operations already applied are kept.', 'entitysync')|json_encode }});">
                         <input type="hidden" name="job" value="{{ job.getID() }}">
-                        <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+                        {{ include('@entitysync/csrf_field.html.twig') }}
                         <button type="submit" name="cancel" value="1" class="btn btn-outline-danger">
                             <i class="ti ti-player-stop"></i>
                             <span>{{ status.status == 'failed' ? __('Remove', 'entitysync') : __('Stop the import', 'entitysync') }}</span>

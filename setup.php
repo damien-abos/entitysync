@@ -13,12 +13,12 @@ use GlpiPlugin\Entitysync\Engine\Util\Msg;
 use GlpiPlugin\Entitysync\Model;
 use GlpiPlugin\Entitysync\ProfileRights;
 
-define('PLUGIN_ENTITYSYNC_VERSION', '0.0.2');
+define('PLUGIN_ENTITYSYNC_VERSION', '0.0.3');
 
 // Minimal GLPI version, inclusive.
 define('PLUGIN_ENTITYSYNC_MIN_GLPI', '11.0.0');
 // Maximum GLPI version, exclusive.
-define('PLUGIN_ENTITYSYNC_MAX_GLPI', '11.0.99');
+define('PLUGIN_ENTITYSYNC_MAX_GLPI', '12.0.99');
 
 /**
  * Plugin initialization (hooks registration).

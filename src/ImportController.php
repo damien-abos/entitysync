@@ -278,27 +278,43 @@ final class ImportController
             return Job::getUrl($jobId);
         }
 
-        $active = Job::findActiveForModel($model->getID(), $jobId);
-        if ($active !== null) {
-            Session::addMessageAfterRedirect(
-                __s('Another import of this model is waiting or running. Wait for it to end before applying this one.', 'entitysync'),
-                false,
-                WARNING,
-            );
+        // One active job per model: the check and the status change are made under a
+        // database lock, so that two imports queued at the same time cannot both pass.
+        global $DB;
+        $lock = 'entitysync_queue_' . $model->getID();
+        if (!$DB->getLock($lock)) {
+            $this->warnActiveJob();
             return Job::getUrl($jobId);
         }
+        try {
+            if (Job::findActiveForModel($model->getID(), $jobId) !== null) {
+                $this->warnActiveJob();
+                return Job::getUrl($jobId);
+            }
 
-        // The background task has no user session: the rights are checked now and kept.
-        $job->updateFields([
-            'status'      => Job::STATUS_QUEUED,
-            'selection'   => json_encode($selection->ids()),
-            'forbidden'   => json_encode(GlpiGateway::forbiddenTypes(), JSON_UNESCAPED_UNICODE),
-            'nb_total'    => count($selection->ids()),
-            'date_queued' => $_SESSION['glpi_currenttime'],
-            'results'     => '{}',
-        ]);
+            // The background task has no user session: the rights are checked now and kept.
+            $job->updateFields([
+                'status'      => Job::STATUS_QUEUED,
+                'selection'   => json_encode($selection->ids()),
+                'forbidden'   => json_encode(GlpiGateway::forbiddenTypes(), JSON_UNESCAPED_UNICODE),
+                'nb_total'    => count($selection->ids()),
+                'date_queued' => $_SESSION['glpi_currenttime'],
+                'results'     => '{}',
+            ]);
+        } finally {
+            $DB->releaseLock($lock);
+        }
 
         return Job::getUrl($jobId);
+    }
+
+    private function warnActiveJob(): void
+    {
+        Session::addMessageAfterRedirect(
+            __s('Another import of this model is waiting or running. Wait for it to end before applying this one.', 'entitysync'),
+            false,
+            WARNING,
+        );
     }
 
     /**

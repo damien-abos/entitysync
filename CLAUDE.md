@@ -4,7 +4,7 @@ Context for Claude Code working on this repository.
 
 ## Project
 
-GLPI 11 plugin `entitysync`: synchronizes the GLPI entity tree below a target entity
+GLPI 11 / 12 plugin `entitysync`: synchronizes the GLPI entity tree below a target entity
 from a CSV file. An import model defines levels (key columns, name column, regex
 replacement rules, comment columns, placeholder name for empty values) and an
 AND / OR / NOT filter on rows. An upload creates an import job with a paginated
@@ -18,17 +18,22 @@ the job is then applied by batches by the GLPI automatic action `entitysyncApply
 ```sh
 make check          # lint (PHP, JS, shell) + unit tests + translation checks: run before finishing
 make test           # engine unit tests only (php tests/run.php [filter])
-make e2e            # end-to-end scenario against the running GLPI (dev container: works as is)
+make e2e            # end-to-end scenario against the GLPI stack (after make glpi-up)
 make locales        # after adding or changing a user-visible string
 make package        # dist/entitysync-<version>.tar.gz
-make glpi-install   # (re)install GLPI and the plugin; needed after install/schema changes
+make glpi-up        # build/start GLPI + MariaDB (docker/compose.yml), install the plugin
+make glpi-reset     # delete the stack's data (needed to change GLPI_VERSION)
 ```
 
-Dev container: GLPI in `/opt/glpi`, served on http://localhost:8080 (glpi / glpi),
-GLPI console `php /opt/glpi/bin/console`, logs in `/opt/glpi/files/_log`
-(`php-errors.log` must stay clean). GLPI's cron runs every minute; to apply a queued
-job at once: `php /opt/glpi/front/cron.php --force entitysyncApply`. The repository is linked as
-`/opt/glpi/plugins/entitysync`, so PHP/Twig/JS changes apply immediately.
+GLPI and MariaDB run in Docker (`docker/compose.yml`, image in `docker/glpi/`, driven by
+`tools/glpi.sh`), in the dev container (docker-in-docker) and in the CI. GLPI on
+http://localhost:8080 (glpi / glpi), installed in `/var/www/glpi` in its container; run
+commands there with `tools/glpi.sh exec ...` (console: `glpi-console`). Logs in
+`docker/log/` (`php-errors.log` must stay clean). GLPI's cron runs every minute; to apply
+a queued job at once: `tools/glpi.sh exec php /var/www/glpi/front/cron.php --force entitysyncApply`.
+After install/schema changes: `tools/glpi.sh exec glpi-console plugin:install entitysync -u glpi --force`.
+The repository is mounted as `/var/www/glpi/plugins/entitysync`, so PHP/Twig/JS changes
+apply immediately.
 
 There is no Composer dependency: the unit tests use the small runner in
 `tests/run.php`. Do not add PHPUnit or other packages without asking.
@@ -46,7 +51,8 @@ There is no Composer dependency: the unit tests use the small runner in
 - `setup.php` (version, hooks), `hook.php` (install/uninstall, schema).
 - `front/` controllers, `templates/` Twig (`@entitysync/...`), `public/` JS/CSS.
 - `tests/Engine/` unit tests, `tests/e2e/` end-to-end scenario and fixtures.
-- `tools/` install, locales extraction, packaging. `docs/` documentation.
+- `docker/` GLPI + MariaDB stack (dev and CI). `tools/` GLPI stack script, locales
+  extraction, packaging. `docs/` documentation.
 
 ## Invariants (do not break)
 
@@ -82,19 +88,26 @@ There is no Composer dependency: the unit tests use the small runner in
 - Schema changes: migration in `plugin_entitysync_install()` with GLPI's `Migration`
   API + version bump in `setup.php`.
 
-## GLPI 11 pitfalls
+## GLPI 11 / 12 pitfalls
+
+- One code base for GLPI 11.0 and 12.0; the differences live in `src/Compat/` and the
+  CI tests both (`GLPI_VERSION=12.0.x make glpi-up` after `make glpi-reset` locally).
+- GLPI 12 types the base class properties (`$rightname`, `$dohistory`): never redeclare
+  them directly, use (or add) a trait of `src/Compat/`, declared per GLPI version.
+- GLPI 12 has no CSRF tokens (header checks) and deprecates `csrf_token()`: in forms,
+  `{{ include('@entitysync/csrf_field.html.twig') }}`, never `csrf_token()` directly.
 
 - `Html::redirect()` / `Html::back()` throw; code after them does not run.
-- POST requests need a fresh single-use CSRF token (`csrf_token()` in Twig).
+- GLPI 11: POST requests need a fresh single-use CSRF token (the partial above).
 - Static assets live in `public/` and are served at `/plugins/entitysync/<file>`.
 - `forcetab` does not work for this plugin's namespaced class by itself:
   `front/model.form.php` sets the active tab explicitly.
-- Methods declared `bool` must cast `Session::haveRight()` (it returns an int).
+- Methods declared `bool` must cast `Session::haveRight()` (an int on GLPI 11).
 - `glpi_entities` has `UNIQUE (entities_id, name)`, case and accent insensitive.
-- Automatic actions in GLPI (internal) mode only run from the login page in GLPI 11:
+- Automatic actions in GLPI (internal) mode only run from the login page:
   the task is registered in CLI mode and needs the system cron.
-- `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET` (in GLPI's `config/local_define.php`) shortens
-  each execution of the task; the e2e uses it to test resumption.
+- `PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET` shortens each execution of the task
+  (`ENTITYSYNC_RUN_TIME_BUDGET=2 make glpi-up`); the CI e2e uses it to test resumption.
 - GLPI queues user messages in the session; `GlpiGateway::guard()` captures them.
 
 ## Release

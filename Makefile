@@ -1,14 +1,23 @@
 # Entity Sync plugin for GLPI — development tasks.
 #
-# Requirements: php (8.2+), gettext tools (msgfmt, msgmerge); node for the JS check (optional).
+# Requirements: php (8.2+), gettext tools (msgfmt, msgmerge); node for the JS check (optional);
+# docker with compose for the GLPI stack (glpi-* targets, e2e).
 
 PLUGIN   := entitysync
 VERSION  := $(shell sed -n "s/^define('PLUGIN_ENTITYSYNC_VERSION', '\(.*\)');/\1/p" setup.php)
 LANGS    := $(basename $(notdir $(wildcard locales/*.po)))
 PHP_SRC  := $(shell find setup.php hook.php front ajax src tests tools -name '*.php')
+SH_SRC   := tools/*.sh .devcontainer/*.sh docker/glpi/root/*.sh docker/glpi/root/usr/local/bin/glpi-console
+
+# End-to-end scenario against the stack of docker/compose.yml (override to target another GLPI).
+COMPOSE      ?= docker compose
+GLPI_DIR     ?= /var/www/glpi
+GLPI_EXEC    ?= $(COMPOSE) -f docker/compose.yml exec -T glpi
+GLPI_LOG_DIR ?= docker/log
+export COMPOSE GLPI_DIR GLPI_EXEC GLPI_LOG_DIR
 
 .DEFAULT_GOAL := help
-.PHONY: help lint test e2e check locales locales-mo locales-check package glpi-install clean version
+.PHONY: help lint test e2e check locales locales-mo locales-check package glpi-up glpi-down glpi-reset clean version
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -19,13 +28,13 @@ version: ## Print the plugin version (from setup.php)
 lint: ## Syntax check of PHP, JavaScript and shell files
 	@for f in $(PHP_SRC); do php -l $$f > /dev/null || exit 1; done
 	@if command -v node > /dev/null; then node --check public/entitysync.js; else echo "node not found, JS check skipped"; fi
-	@if command -v shellcheck > /dev/null; then shellcheck tools/*.sh .devcontainer/*.sh; else echo "shellcheck not found, shell check skipped"; fi
+	@if command -v shellcheck > /dev/null; then shellcheck $(SH_SRC); else echo "shellcheck not found, shell check skipped"; fi
 	@echo "lint ok"
 
 test: ## Run the engine unit tests
 	php tests/run.php
 
-e2e: ## Run the end-to-end scenario against a running GLPI (see tests/e2e/run.php)
+e2e: ## Run the end-to-end scenario against the running GLPI stack (see tests/e2e/run.php)
 	php tests/e2e/run.php
 
 check: lint test locales-check ## Lint, unit tests and translation checks
@@ -50,8 +59,14 @@ locales-check: ## Fail if the template is outdated or the French catalog is inco
 package: ## Build the deployable archive in dist/
 	tools/build-package.sh
 
-glpi-install: ## Install GLPI and the plugin for development (see tools/install-glpi.sh)
-	tools/install-glpi.sh
+glpi-up: ## Build and start GLPI + MariaDB, install and activate the plugin (see tools/glpi.sh)
+	tools/glpi.sh up
+
+glpi-down: ## Stop the GLPI stack (data kept)
+	tools/glpi.sh down
+
+glpi-reset: ## Stop the GLPI stack and delete its data
+	tools/glpi.sh reset
 
 clean: ## Remove build outputs
-	rm -rf dist locales/*.mo
+	rm -rf dist locales/*.mo docker/log

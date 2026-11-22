@@ -33,7 +33,7 @@ jobs:
       - name: Install gettext
         run: sudo apt-get update -q && sudo apt-get install -y -q gettext
 
-      - name: Lint PHP and JavaScript
+      - name: Lint PHP, JavaScript and shell
         run: make lint
 
       - name: Check translations
@@ -59,72 +59,35 @@ jobs:
         run: make test
 
   e2e:
-    name: E2E (GLPI ${{ matrix.glpi }}, PHP ${{ matrix.php }})
+    name: E2E (GLPI ${{ matrix.glpi }})
     needs: [checks, unit]
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Oldest supported GLPI with the oldest supported PHP.
-          - glpi: '11.0.0'
-            php: '8.2'
-          # Latest GLPI 11.0.x.
-          - glpi: latest
-            php: '8.4'
-    services:
-      db:
-        image: mariadb:10.11
-        env:
-          MARIADB_ROOT_PASSWORD: root
-          MARIADB_DATABASE: glpi
-          MARIADB_USER: glpi
-          MARIADB_PASSWORD: glpi
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=20
+        # Oldest and latest release of each supported GLPI branch, built into the image of
+        # docker/compose.yml (PHP 8.5, MariaDB 11.4), as in the dev container.
+        glpi: ['11.0.0', '11.0.x', '12.0.0', '12.0.x']
     env:
       GLPI_VERSION: ${{ matrix.glpi }}
-      GLPI_DIR: ${{ github.workspace }}/../glpi
-      GLPI_URL: http://127.0.0.1:8080
-      GLPI_LOG_DIR: ${{ github.workspace }}/../glpi/files/_log
-      DB_HOST: 127.0.0.1
-      DB_PORT: '3306'
-      DB_NAME: glpi
-      DB_USER: glpi
-      DB_PASSWORD: glpi
+      # Short executions of the background task, so that the e2e scenario also
+      # checks that a job resumes over several runs.
+      ENTITYSYNC_RUN_TIME_BUDGET: '2'
     steps:
       - uses: actions/checkout@v7
 
+      # PHP client of the scenario (HTTP and database checks); GLPI runs in Docker.
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
-          extensions: ${{ env.PHP_EXTENSIONS }}
-          ini-values: memory_limit=512M, upload_max_filesize=16M, post_max_size=16M
+          php-version: '8.4'
+          extensions: curl, mbstring, mysqli
           tools: none
 
       - name: Install gettext
         run: sudo apt-get update -q && sudo apt-get install -y -q gettext
 
-      - name: Install GLPI and the plugin
-        run: |
-          make glpi-install
-          # Short executions of the background task, so that the e2e scenario also
-          # checks that a job resumes over several runs.
-          echo "define('PLUGIN_ENTITYSYNC_RUN_TIME_BUDGET', 2);" >> "$GLPI_DIR/config/local_define.php"
-
-      - name: Start GLPI
-        run: |
-          nohup php -S 127.0.0.1:8080 -t "$GLPI_DIR/public" "$GLPI_DIR/public/index.php" > "$RUNNER_TEMP/php-server.log" 2>&1 &
-          for _ in $(seq 1 30); do
-            curl -fs -o /dev/null "$GLPI_URL/" && exit 0
-            sleep 1
-          done
-          echo "GLPI did not start" >&2
-          cat "$RUNNER_TEMP/php-server.log" >&2
-          exit 1
+      - name: Start GLPI and install the plugin
+        run: make glpi-up
 
       - name: Run the end-to-end scenario
         run: make e2e
@@ -133,14 +96,14 @@ jobs:
         if: failure()
         run: |
           mkdir -p "$RUNNER_TEMP/logs"
-          cp -r "$GLPI_LOG_DIR"/. "$RUNNER_TEMP/logs/" || true
-          cp "$RUNNER_TEMP/php-server.log" "$RUNNER_TEMP/logs/" || true
+          cp -r docker/log/. "$RUNNER_TEMP/logs/" || true
+          docker compose -f docker/compose.yml logs --no-color > "$RUNNER_TEMP/logs/compose.log" 2>&1 || true
 
       - name: Upload GLPI logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: glpi-logs-${{ matrix.glpi }}-php${{ matrix.php }}
+          name: glpi-logs-${{ matrix.glpi }}
           path: ${{ runner.temp }}/logs
           retention-days: 7
 

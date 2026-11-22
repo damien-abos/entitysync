@@ -22,7 +22,7 @@ droits et paramétrage des modèles d'import. Le lancement des imports est décr
 
 | Composant | Version |
 |---|---|
-| GLPI | 11.0.x (testé avec 11.0.0 et 11.0.11) |
+| GLPI | 11.0.x ou 12.0.x (testé avec 11.0.0, 11.0.13, 12.0.0 et 12.0.2) |
 | PHP | Les versions prises en charge par votre version de GLPI (8.2 ou plus), avec les extensions `mbstring` et `intl` (déjà exigées par GLPI) |
 | Base de données | Celle utilisée par GLPI (MariaDB ou MySQL) |
 | Cron GLPI | **Lancé par le système** (crontab ou timer systemd), voir [tâche de fond](#tâche-de-fond-cron-glpi) : les imports sont appliqués par une action automatique de GLPI |
@@ -79,10 +79,13 @@ Le menu se trouve dans *Administration > Import d'entités*.
 
 Les modèles, les entités gérées et l'historique sont conservés.
 
-**De 1.0.x vers 1.1.0** : la mise à jour ajoute la table `glpi_plugin_entitysync_jobs`,
+**De 0.0.1 vers 0.0.2** : la mise à jour ajoute la table `glpi_plugin_entitysync_jobs`,
 une colonne `status` à l'historique et l'action automatique `entitysyncApply`. Depuis
-la 1.1.0, les imports sont appliqués en arrière-plan : configurez le cron de GLPI
+la 0.0.2, les imports sont appliqués en arrière-plan : configurez le cron de GLPI
 (section suivante) avant le premier import.
+
+**De 0.0.2 vers 0.0.3** : pas de changement de schéma ; le même paquet fonctionne
+aussi sous GLPI 12.0.x. Lancez la mise à jour comme ci-dessus.
 
 ## Désinstallation
 
@@ -104,7 +107,7 @@ attente par lots :
 - le plan est recalculé à partir de l'état actuel de GLPI à chaque exécution ;
 - l'action supprime aussi les prévisualisations non appliquées au bout de 24 heures.
 
-GLPI 11 ne lance les actions automatiques en mode *GLPI* qu'à l'affichage de la page de
+GLPI 11 et 12 ne lancent les actions automatiques en mode *GLPI* qu'à l'affichage de la page de
 connexion, ce qui ne suffit pas pour une tâche de fond. L'action est donc installée en
 mode **CLI**, et le cron de GLPI doit être lancé par le système toutes les minutes, avec
 l'utilisateur du serveur web :
@@ -135,7 +138,7 @@ avertissement quand l'action n'a pas tourné 3 minutes après la mise en file.
 | `upload_max_filesize`, `post_max_size` (PHP) | Taille maximale du fichier CSV. L'onglet Import affiche la limite en vigueur. |
 | `memory_limit` (PHP) | Le fichier est chargé entièrement en mémoire. À titre d'ordre de grandeur, le moteur a utilisé environ 110 Mo pour 50 000 lignes lors d'un test (estimation, dépend du nombre de colonnes). |
 | Délais du serveur web | Seule la prévisualisation est calculée dans une requête web (environ 1,6 s pour 1 200 lignes mesurées sur une instance de test) ; les modifications sont appliquées par la tâche de fond, les imports ne sont donc pas limités par `fastcgi_read_timeout`, `request_terminate_timeout` ou équivalents. |
-| `max_input_vars` (PHP) | Aucune contrainte depuis la 1.1.0 : la sélection est envoyée par de petits appels AJAX, et non comme un champ de formulaire par modification. |
+| `max_input_vars` (PHP) | Aucune contrainte depuis la 0.0.2 : la sélection est envoyée par de petits appels AJAX, et non comme un champ de formulaire par modification. |
 | `files/_plugins/entitysync` (GLPI) | Fichiers envoyés et instantanés de prévisualisation des travaux. Doit être accessible en écriture au serveur web **et** à l'utilisateur qui lance le cron (normalement le même). Les fichiers sont supprimés à la fin du travail. |
 
 ## Droits
@@ -322,7 +325,7 @@ projet, elle s'arrête donc à *Nantes*.
 | *Cet import a expiré* / *Cet import n'existe plus* | La prévisualisation a été annulée, ou supprimée au bout de 24 heures sans avoir été appliquée. Renvoyez le fichier. |
 | L'import reste *En attente de la tâche de fond* | Le cron de GLPI n'est pas lancé par le système, ou l'action `entitysyncApply` est désactivée ou en mode *GLPI*. Voir [tâche de fond](#tâche-de-fond-cron-glpi) ; le bouton *Exécuter* de l'action la lance une fois. |
 | *Un autre import de ce modèle est en attente ou en cours* | Un seul import par modèle tourne à la fois. Attendez sa fin (sa page de suivi est en lien), ou arrêtez-le. |
-| Un fichier de plus de 1 000 modifications ne peut pas être appliqué (HTTP 400) | Version 1.0.x du plugin : mettez à jour en 1.1.0 ou plus. |
+| Un fichier de plus de 1 000 modifications ne peut pas être appliqué (HTTP 400) | Version 0.0.1 du plugin : mettez à jour en 0.0.2 ou plus. |
 | Une suppression est bloquée : *Contient encore…* | L'entité contient encore des éléments (ordinateurs, tickets, habilitations d'utilisateurs…). Déplacez-les ou supprimez-les, puis relancez l'import. |
 | Une ligne est en erreur : *le nom « X » est déjà produit par une autre clé* | Deux clés différentes donnent le même nom sous le même parent, ce que GLPI interdit. Corrigez les données source, ou changez la colonne du nom ou les règles. |
 | L'entité n'est pas rattachée : *déjà gérée par un autre modèle d'import* | Deux modèles visent les mêmes entités. Chaque entité ne peut être gérée que par un seul modèle. |

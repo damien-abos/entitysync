@@ -8,7 +8,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: front/import.php:29 src/Model.php:53 src/ProfileRights.php:27 src/ProfileRights.php:68
+#: front/import.php:29 src/Model.php:54 src/ProfileRights.php:28 src/ProfileRights.php:69
 msgid "Entity import"
 msgstr ""
 
@@ -286,35 +286,35 @@ msgstr ""
 msgid "No change was selected."
 msgstr ""
 
-#: src/ImportController.php:284 templates/preview.html.twig:65
+#: src/ImportController.php:314 templates/preview.html.twig:65
 msgid "Another import of this model is waiting or running. Wait for it to end before applying this one."
 msgstr ""
 
-#: src/ImportController.php:401
+#: src/ImportController.php:417
 msgid "Parent entity"
 msgstr ""
 
-#: src/ImportController.php:415 templates/import_form.html.twig:37
+#: src/ImportController.php:431 templates/import_form.html.twig:37
 msgid "You need a recursive access to the target root entity."
 msgstr ""
 
-#: src/ImportController.php:428
+#: src/ImportController.php:444
 msgid "This import no longer exists."
 msgstr ""
 
-#: src/ImportController.php:446
+#: src/ImportController.php:462
 msgid "This import is no longer editable."
 msgstr ""
 
-#: src/Job.php:246
+#: src/Job.php:247
 msgid "Apply the queued entity imports by batches"
 msgstr ""
 
-#: src/Job.php:247
+#: src/Job.php:248
 msgid "Number of operations per batch"
 msgstr ""
 
-#: src/Job.php:60 templates/job_status.html.twig:32
+#: src/Job.php:61 templates/job_status.html.twig:32
 msgid "Import job"
 msgid_plural "Import jobs"
 msgstr[0] ""
@@ -328,296 +328,296 @@ msgstr ""
 msgid "No longer applies: the data changed since the preview."
 msgstr ""
 
-#: src/Link.php:26
+#: src/Link.php:27
 msgid "Managed entity"
 msgid_plural "Managed entities"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/Model.php:64
+#: src/Model.php:65
 msgid "Apply an import"
 msgstr ""
 
-#: src/Model.php:87
+#: src/Model.php:88
 msgid "Import"
 msgstr ""
 
-#: src/Model.php:137 src/Model.php:141
+#: src/Model.php:138 src/Model.php:142
 msgid "Automatic"
 msgstr ""
 
-#: src/Model.php:142
+#: src/Model.php:143
 msgid "Semicolon (;)"
 msgstr ""
 
-#: src/Model.php:143
+#: src/Model.php:144
 msgid "Comma (,)"
 msgstr ""
 
-#: src/Model.php:144
+#: src/Model.php:145
 msgid "Tab"
 msgstr ""
 
-#: src/Model.php:145
+#: src/Model.php:146
 msgid "Pipe (|)"
 msgstr ""
 
-#: src/Model.php:185
+#: src/Model.php:186
 msgid "The name is mandatory."
 msgstr ""
 
-#: src/Model.php:193
+#: src/Model.php:194
 msgid "The levels configuration is not valid JSON."
 msgstr ""
 
-#: src/Model.php:204
+#: src/Model.php:205
 msgid "The filter configuration is not valid JSON."
 msgstr ""
 
-#: src/Model.php:268 templates/model_form.html.twig:13
+#: src/Model.php:269 templates/model_form.html.twig:13
 msgid "Target root entity"
 msgstr ""
 
-#: src/Model.php:372 src/Model.php:491
+#: src/Model.php:373 src/Model.php:492
 #, php-format
 msgid "No %s"
 msgstr ""
 
-#: src/Model.php:436
+#: src/Model.php:437
 msgid "Level"
 msgstr ""
 
-#: src/Model.php:437
+#: src/Model.php:438
 msgid "Level label"
 msgstr ""
 
-#: src/Model.php:438
+#: src/Model.php:439
 msgid "Add a level"
 msgstr ""
 
-#: src/Model.php:439 templates/job_status.html.twig:97
+#: src/Model.php:440 templates/job_status.html.twig:97
 msgid "Remove"
 msgstr ""
 
-#: src/Model.php:440
+#: src/Model.php:441
 msgid "Move up"
 msgstr ""
 
-#: src/Model.php:441
+#: src/Model.php:442
 msgid "Move down"
 msgstr ""
 
-#: src/Model.php:442
+#: src/Model.php:443
 msgid "Key columns"
 msgstr ""
 
-#: src/Model.php:443
+#: src/Model.php:444
 msgid "One or more columns identifying the entity at this level. An empty key mid-path creates the \"empty\" entity below."
 msgstr ""
 
-#: src/Model.php:444
+#: src/Model.php:445
 msgid "Name column"
 msgstr ""
 
-#: src/Model.php:445
+#: src/Model.php:446
 msgid "Leave empty to use the key columns."
 msgstr ""
 
-#: src/Model.php:446
+#: src/Model.php:447
 msgid "Name replacement rules"
 msgstr ""
 
-#: src/Model.php:447
+#: src/Model.php:448
 msgid "Applied in order. Regular expressions without delimiters; use $1, $2... in the replacement."
 msgstr ""
 
-#: src/Model.php:448
+#: src/Model.php:449
 msgid "Pattern"
 msgstr ""
 
-#: src/Model.php:449
+#: src/Model.php:450
 msgid "Replacement"
 msgstr ""
 
-#: src/Model.php:450
+#: src/Model.php:451
 msgid "Flags"
 msgstr ""
 
-#: src/Model.php:451
+#: src/Model.php:452
 msgid "Add a rule"
 msgstr ""
 
-#: src/Model.php:452
+#: src/Model.php:453
 msgid "Comment columns"
 msgstr ""
 
-#: src/Model.php:453
+#: src/Model.php:454
 msgid "Each column adds a \"Label: value\" line. Without columns, the comment of the entities is left untouched."
 msgstr ""
 
-#: src/Model.php:454
+#: src/Model.php:455
 msgid "Column"
 msgstr ""
 
-#: src/Model.php:455
+#: src/Model.php:456
 msgid "Label"
 msgstr ""
 
-#: src/Model.php:456
+#: src/Model.php:457
 msgid "Add a column"
 msgstr ""
 
-#: src/Model.php:457
+#: src/Model.php:458
 msgid "Skip empty values"
 msgstr ""
 
-#: src/Model.php:458
+#: src/Model.php:459
 msgid "Name when empty"
 msgstr ""
 
-#: src/Model.php:459
+#: src/Model.php:460
 msgid "Name of the entity created when this level is empty but a deeper level is filled. Default: \"No <level>\"."
 msgstr ""
 
-#: src/Model.php:460
+#: src/Model.php:461
 msgid "Add"
 msgstr ""
 
-#: src/Model.php:461
+#: src/Model.php:462
 msgid "Test"
 msgstr ""
 
-#: src/Model.php:462
+#: src/Model.php:463
 msgid "Sample value"
 msgstr ""
 
-#: src/Model.php:463
+#: src/Model.php:464
 msgid "Group"
 msgstr ""
 
-#: src/Model.php:464
+#: src/Model.php:465
 msgid "AND"
 msgstr ""
 
-#: src/Model.php:465
+#: src/Model.php:466
 msgid "OR"
 msgstr ""
 
-#: src/Model.php:466
+#: src/Model.php:467
 msgid "NOT"
 msgstr ""
 
-#: src/Model.php:467
+#: src/Model.php:468
 msgid "Add a condition"
 msgstr ""
 
-#: src/Model.php:468
+#: src/Model.php:469
 msgid "Add a group"
 msgstr ""
 
-#: src/Model.php:469
+#: src/Model.php:470
 msgid "Value(s)"
 msgstr ""
 
-#: src/Model.php:470
+#: src/Model.php:471
 msgid "One value per line. With several values, the condition matches if any value matches (or none, for negative operators)."
 msgstr ""
 
-#: src/Model.php:471
+#: src/Model.php:472
 msgid "Case sensitive"
 msgstr ""
 
-#: src/Model.php:472
+#: src/Model.php:473
 msgid "No condition: every row is imported."
 msgstr ""
 
-#: src/Model.php:473
+#: src/Model.php:474
 msgid "equals"
 msgstr ""
 
-#: src/Model.php:474
+#: src/Model.php:475
 msgid "is different from"
 msgstr ""
 
-#: src/Model.php:475
+#: src/Model.php:476
 msgid "is in the list"
 msgstr ""
 
-#: src/Model.php:476
+#: src/Model.php:477
 msgid "is not in the list"
 msgstr ""
 
-#: src/Model.php:477
+#: src/Model.php:478
 msgid "contains"
 msgstr ""
 
-#: src/Model.php:478
+#: src/Model.php:479
 msgid "does not contain"
 msgstr ""
 
-#: src/Model.php:479
+#: src/Model.php:480
 msgid "starts with"
 msgstr ""
 
-#: src/Model.php:480
+#: src/Model.php:481
 msgid "ends with"
 msgstr ""
 
-#: src/Model.php:481
+#: src/Model.php:482
 msgid "matches the regular expression"
 msgstr ""
 
-#: src/Model.php:482
+#: src/Model.php:483
 msgid "is greater than"
 msgstr ""
 
-#: src/Model.php:483
+#: src/Model.php:484
 msgid "is greater than or equal to"
 msgstr ""
 
-#: src/Model.php:484
+#: src/Model.php:485
 msgid "is less than"
 msgstr ""
 
-#: src/Model.php:485
+#: src/Model.php:486
 msgid "is less than or equal to"
 msgstr ""
 
-#: src/Model.php:486
+#: src/Model.php:487
 msgid "is empty"
 msgstr ""
 
-#: src/Model.php:487
+#: src/Model.php:488
 msgid "is not empty"
 msgstr ""
 
-#: src/Model.php:488
+#: src/Model.php:489
 msgid "No level yet: add the first level below the target root entity."
 msgstr ""
 
-#: src/Model.php:489
+#: src/Model.php:490
 msgid "Invalid regular expression"
 msgstr ""
 
-#: src/Model.php:490
+#: src/Model.php:491
 msgid "(no change)"
 msgstr ""
 
-#: src/Model.php:492
+#: src/Model.php:493
 msgid "Preview computed by your browser; the server uses PCRE, results may differ for advanced syntax."
 msgstr ""
 
-#: src/Model.php:43
+#: src/Model.php:44
 msgid "Entity import model"
 msgid_plural "Entity import models"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ProfileRights.php:73
+#: src/ProfileRights.php:74
 msgid "Applying an import also requires the create, update and delete rights on entities, and a recursive access to the target root entity."
 msgstr ""
 
-#: src/Run.php:32
+#: src/Run.php:33
 msgid "Import run"
 msgid_plural "Import runs"
 msgstr[0] ""

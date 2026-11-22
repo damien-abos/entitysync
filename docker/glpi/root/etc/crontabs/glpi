@@ -1,0 +1,2 @@
+# GLPI cron, every minute. supercronic runs the command with /bin/sh and logs its output.
+* * * * * /usr/bin/php85 /var/www/glpi/front/cron.php

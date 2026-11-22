@@ -1,0 +1,73 @@
+# GLPI + MariaDB stack to develop and test the plugin (dev container and CI).
+#
+# Driven by tools/glpi.sh (make glpi-up / glpi-down / glpi-reset), which also
+# installs and activates the plugin. GLPI: http://localhost:8080 (glpi / glpi).
+#
+# Test credentials only: this stack is not meant for production.
+
+name: entitysync
+
+services:
+  glpi:
+    build:
+      context: glpi
+      args:
+        GLPI_VERSION: ${GLPI_VERSION:-11.0.13}
+    image: entitysync-glpi:${GLPI_VERSION:-11.0.13}
+    restart: unless-stopped
+    depends_on:
+      glpi-db:
+        # the entrypoint installs or configures the database at once
+        condition: service_healthy
+    environment:
+      GLPI_DATABASE_HOST: glpi-db
+      GLPI_DATABASE_PORT: 3306
+      GLPI_DATABASE_NAME: glpi
+      GLPI_DATABASE_USERNAME: glpi
+      GLPI_DATABASE_PASSWORD: glpi
+      GLPI_DEFAULT_LANGUAGE: en_GB
+      # development: strict Twig variables, debug logs.
+      GLPI_ENVIRONMENT_TYPE: ${GLPI_ENVIRONMENT_TYPE:-development}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${GLPI_HTTP_PORT:-8080}:8080"
+    volumes:
+      - glpi-data:/data
+      # The repository is the plugin: PHP, Twig and JS changes apply at once.
+      - ..:/var/www/glpi/plugins/entitysync
+      # GLPI logs, readable from the repository (php-errors.log must stay clean).
+      - ./log:/data/glpi/files/_log
+    healthcheck:
+      test: ["CMD", "/readinessCheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  glpi-db:
+    image: docker.io/library/mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: glpi
+      MARIADB_USER: glpi
+      MARIADB_PASSWORD: glpi
+      TZ: ${TZ:-UTC}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      # The end-to-end scenario checks the result in the database.
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - glpi-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  glpi-data:
+  glpi-db:

@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace GlpiPlugin\Entitysync;
 
 use CommonGLPI;
+use GlpiPlugin\Entitysync\Compat\ProfileRightName;
 use Html;
 use Profile;
 use Session;
@@ -20,7 +21,7 @@ use Session;
  */
 class ProfileRights extends CommonGLPI
 {
-    public static $rightname = 'profile';
+    use ProfileRightName;
 
     public static function getTypeName($nb = 0)
     {

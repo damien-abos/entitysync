@@ -12,6 +12,7 @@ namespace GlpiPlugin\Entitysync;
 
 use CommonDBTM;
 use Glpi\Application\View\TemplateRenderer;
+use GlpiPlugin\Entitysync\Compat\ModelRightName;
 use User;
 
 /**
@@ -19,7 +20,7 @@ use User;
  */
 class Run extends CommonDBTM
 {
-    public static $rightname = 'plugin_entitysync_model';
+    use ModelRightName;
 
     /** Number of runs listed in the model tab. */
     private const HISTORY_LIMIT = 50;
